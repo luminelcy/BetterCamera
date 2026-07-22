@@ -11,6 +11,12 @@ namespace BetterCamera
         private const string FooterCenterPath =
             "SceneContext/CommonCanvas/UIPartsGroup/Footer/Center";
 
+        private const string SwitchCameraPath =
+            "SceneContext/CommonCanvas/UIPartsGroup/Header/RightIconBackground/P_SwitchCameraFocusModeButtonObject";
+
+        private const string BodyRightPath =
+            "SceneContext/CommonCanvas/UIPartsGroup/Body/Right";
+
         public static void Init(MelonLogger.Instance logger)
         {
             var original = GameObject.Find(ZoomHandlePath);
@@ -49,6 +55,37 @@ namespace BetterCamera
             if (zoomInIcon2 != null) zoomInIcon2.localScale = Vector3.zero;
             var zoomOutIcon2 = clone2.transform.Find("ZoomOutIcon");
             if (zoomOutIcon2 != null) zoomOutIcon2.localScale = Vector3.zero;
+
+            var handle2 = clone2.transform.Find("Slider/Slider/Handle Slide Area");
+            if (handle2 != null)
+            {
+                var handleRt = handle2.GetComponent<RectTransform>();
+                if (handleRt != null) handleRt.sizeDelta = new Vector2(578f, 0f);
+            }
+            var bar2 = clone2.transform.Find("Slider/Bar");
+            if (bar2 != null) bar2.localScale = new Vector3(1f, 2.895f, 1f);
+
+            var switchCamOriginal = GameObject.Find(SwitchCameraPath);
+            if (switchCamOriginal != null)
+            {
+                var bodyRight = GameObject.Find(BodyRightPath);
+                if (bodyRight != null)
+                {
+                    var cloneSwitch = UnityEngine.Object.Instantiate(switchCamOriginal, bodyRight.transform);
+                    cloneSwitch.name = "P_BetterCameraSwitchModeButton";
+                    cloneSwitch.transform.localPosition = new Vector3(-220f, 205f, 0f);
+                    var iconZoomIn = cloneSwitch.transform.Find("CircleIconButton/IconZoomIn");
+                    if (iconZoomIn != null) UnityEngine.Object.Destroy(iconZoomIn.gameObject);
+
+                    var cloneSwitch1 = UnityEngine.Object.Instantiate(switchCamOriginal, bodyRight.transform);
+                    cloneSwitch1.name = "P_SwitchCameraFocusModeButtonObject1";
+                    cloneSwitch1.transform.localPosition = new Vector3(-220f, -201f, 0f);
+                    var iconZoomOut = cloneSwitch1.transform.Find("CircleIconButton/IconZoomOut");
+                    if (iconZoomOut != null) UnityEngine.Object.Destroy(iconZoomOut.gameObject);
+                }
+                else logger.Error($"Cannot find Body/Right at path: {BodyRightPath}");
+            }
+            else logger.Error($"Cannot find SwitchCamera at path: {SwitchCameraPath}");
 
             UnityEngine.Object.Destroy(original);
 
