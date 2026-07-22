@@ -1,3 +1,9 @@
 <Solution>
-  <Project Path="BetterCamera/BetterCamera.csproj" />
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="BetterCamera/BetterCamera.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
 </Solution>
