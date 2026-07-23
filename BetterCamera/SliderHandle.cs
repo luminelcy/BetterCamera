@@ -93,7 +93,7 @@ namespace BetterCamera
             }
             else logger.Error($"Cannot find SwitchCamera at path: {SwitchCameraPath}");
 
-            var showRoomStatesOriginal = GameObject.Find(ShowRoomStatesPath);
+            var showRoomStatesOriginal = FindInactiveByPath(ShowRoomStatesPath);
             if (showRoomStatesOriginal != null)
             {
                 var footerCenter2 = GameObject.Find(FooterCenterPath);
@@ -129,6 +129,22 @@ namespace BetterCamera
             UnityEngine.Object.Destroy(original);
 
             logger.Msg("Successfully cloned P_ZoomHandleObject twice!");
+        }
+
+        private static GameObject FindInactiveByPath(string path)
+        {
+            var parts = path.Split('/');
+            // 用 GameObject.Find 找到 active 的第一级，再用 Transform.Find 向下查找 inactive 子对象
+            var root = GameObject.Find(parts[0]);
+            if (root == null) return null;
+
+            Transform current = root.transform;
+            for (int i = 1; i < parts.Length; i++)
+            {
+                current = current.Find(parts[i]);
+                if (current == null) return null;
+            }
+            return current.gameObject;
         }
     }
 }

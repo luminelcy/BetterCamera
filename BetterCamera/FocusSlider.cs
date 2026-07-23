@@ -91,7 +91,9 @@ namespace BetterCamera
 
             // 在 SceneContext 下查找带 Volume 的 GameObject
             var volumeGo = GameObject.Find("SceneContext/Volume");
-            if (volumeGo == null) { _logger?.Msg("FocusSlider: SceneContext/Volume not found"); return; }
+            if (volumeGo == null)
+                volumeGo = GameObject.Find("SceneContext/Systems/FocusCameraSwitcher");
+            if (volumeGo == null) { _logger?.Msg("FocusSlider: Volume GameObject not found"); return; }
             _logger?.Msg($"FocusSlider: Found Volume GameObject: {volumeGo.name}");
 
             var controllerComp = getControllerComp.Invoke(volumeGo, null);
