@@ -1,126 +1,136 @@
 using MelonLoader;
 using UnityEngine;
 using Il2CppInterop.Runtime;
+using Il2CppInterop.Runtime.InteropTypes;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace BetterCamera
 {
-    public static class DutchSlider
+    public static class FocusSlider
     {
         private const string SliderPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Footer/Center/P_BetterCameraHandleObject2/Slider/Slider";
+            "SceneContext/CommonCanvas/UIPartsGroup/Body/Right/P_BetterCameraHandleObject1/Slider/Slider";
 
-        private static Il2CppSystem.Object cachedCameraObj;
-        private static Il2CppSystem.Reflection.FieldInfo cachedMLensField;
-        private static Il2CppSystem.Reflection.FieldInfo cachedDutchField;
+        private static Il2CppSystem.Object cachedDOFInstance;
+        private static Il2CppSystem.Reflection.FieldInfo cachedFocusDistanceField;
+        private static Il2CppSystem.Reflection.FieldInfo cachedValueField;
 
         private static Il2CppSystem.Object cachedSliderObj;
-        private static Il2CppSystem.Reflection.FieldInfo cachedMValueField;
         private static Il2CppSystem.Reflection.FieldInfo cachedMMaxValueField;
         private static Il2CppSystem.Reflection.FieldInfo cachedMMinValueField;
         private static Il2CppSystem.Reflection.MethodInfo cachedSetMethod;
 
+        private static MelonLogger.Instance _logger;
+
         public static void Init(MelonLogger.Instance logger)
         {
-            CacheCameraFields();
+            _logger = logger;
+            CacheDOFFields();
             CacheSliderFields();
-            ConfigureSlider(90f, -90f, 0f);
+
+            logger.Msg($"FocusSlider: cachedDOFInstance={cachedDOFInstance != null}, cachedFocusDistanceField={cachedFocusDistanceField != null}, cachedValueField={cachedValueField != null}");
+            logger.Msg($"FocusSlider: cachedSliderObj={cachedSliderObj != null}, cachedSetMethod={cachedSetMethod != null}");
+
+            // 设置 max/min
+            if (cachedSliderObj != null)
+            {
+                if (cachedMMaxValueField != null)
+                    SetFloatField(cachedSliderObj, cachedMMaxValueField, 1.4f);
+                if (cachedMMinValueField != null)
+                    SetFloatField(cachedSliderObj, cachedMMinValueField, 0.01f);
+            }
+
+            // 设置初始值 0.7
+            if (cachedSliderObj != null && cachedSetMethod != null)
+            {
+                var boxedVal = BoxFloat(0.7f);
+                var boxedFalse = BoxBool(false);
+                cachedSetMethod.Invoke(cachedSliderObj, new Il2CppSystem.Object[] { boxedVal, boxedFalse });
+            }
+
+            // 同步到 DepthOfField
+            SetFocusDistance(0.7f);
+
             RegisterSlider();
-            SetFocusSliderDirection();
-        }
-
-        private static void SetFocusSliderDirection()
-        {
-            var sliderObj = GameObject.Find("SceneContext/CommonCanvas/UIPartsGroup/Body/Right/P_BetterCameraHandleObject1/Slider/Slider");
-            if (sliderObj == null) return;
-
-            var sliderType = FindType("Il2CppProject.NoArrowMovableSlider");
-            if (sliderType == null) return;
-
-            var getCompDef = GetGenericGetComponent();
-            if (getCompDef == null) return;
-
-            var sliderComp = getCompDef.MakeGenericMethod(sliderType).Invoke(sliderObj, null);
-            if (sliderComp == null) return;
-
-            var pointerProp = sliderComp.GetType().GetProperty("Pointer",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (pointerProp == null) return;
-
-            var ptr = (System.IntPtr)pointerProp.GetValue(sliderComp);
-            var il2cppSliderObj = new Il2CppSystem.Object(ptr);
-
-            var baseSliderType = FindType("UnityEngine.UI.Slider");
-            if (baseSliderType == null) return;
-
-            var il2cppSliderType = Il2CppType.From(baseSliderType);
-            var directionField = FindIl2CppField(il2cppSliderType, "m_Direction");
-            if (directionField == null) return;
-
-            // Slider.Direction.RightToLeft = 1
-            SetIntField(il2cppSliderObj, directionField, 1);
-        }
-
-        private static void SetIntField(Il2CppSystem.Object target, Il2CppSystem.Reflection.FieldInfo field, int value)
-        {
-            var corlib = IL2CPP.il2cpp_get_corlib();
-            var int32Class = IL2CPP.il2cpp_class_from_name(corlib, "System", "Int32");
-            var bytes = System.BitConverter.GetBytes(value);
-            var ptr = Marshal.AllocHGlobal(bytes.Length);
-            Marshal.Copy(bytes, 0, ptr, bytes.Length);
-            var boxedPtr = IL2CPP.il2cpp_value_box(int32Class, ptr);
-            Marshal.FreeHGlobal(ptr);
-            field.SetValue(target, new Il2CppSystem.Object(boxedPtr));
-        }
-
-        public static void ResetSliderValue()
-        {
-            if (cachedSliderObj == null || cachedSetMethod == null) return;
-
-            var boxedZero = BoxFloat(0f);
-            var boxedFalse = BoxBool(false);
-
-            cachedSetMethod.Invoke(cachedSliderObj, new Il2CppSystem.Object[] { boxedZero, boxedFalse });
         }
 
         private static void OnSliderChanged(float value)
         {
-            if (cachedCameraObj == null || cachedMLensField == null || cachedDutchField == null) return;
-
-            var lensValue = cachedMLensField.GetValue(cachedCameraObj);
-            if (lensValue == null) return;
-
-            SetDutch(lensValue, value);
+            SetFocusDistance(value);
         }
 
-        private static void CacheCameraFields()
+        private static void SetFocusDistance(float value)
         {
-            var cameraObj = GameObject.Find("SceneContext/P_RoomCameraObject/VirtualCameras/DefaultVirtualCamera");
-            if (cameraObj == null) return;
+            if (cachedDOFInstance == null || cachedFocusDistanceField == null) return;
 
-            var cameraType = FindType("Il2CppCinemachine.CinemachineVirtualCamera");
-            if (cameraType == null) return;
+            var focusDistanceObj = cachedFocusDistanceField.GetValue(cachedDOFInstance);
+            if (focusDistanceObj == null) return;
+
+            if (cachedValueField != null)
+            {
+                SetFloatField(focusDistanceObj, cachedValueField, value);
+            }
+        }
+
+        private static void CacheDOFFields()
+        {
+            var dofType = FindType("UnityEngine.Rendering.Universal.DepthOfField");
+            if (dofType == null) { _logger?.Msg("FocusSlider: DepthOfField type not found"); return; }
+            _logger?.Msg($"FocusSlider: Found dofType: {dofType.FullName}");
+
+            // DepthOfField(Clone) 在 FocusClickedObjectController._depthOfField 中
+            var controllerType = FindType("Il2CppProject.HomeScene.RoomScene.RoomSnapScene.SwitchCameraFocusModeButtonObject.FocusClickedObjectController");
+            if (controllerType == null) { _logger?.Msg("FocusSlider: FocusClickedObjectController type not found"); return; }
+            _logger?.Msg($"FocusSlider: Found controllerType: {controllerType.FullName}");
 
             var getCompDef = GetGenericGetComponent();
             if (getCompDef == null) return;
+            var getControllerComp = getCompDef.MakeGenericMethod(controllerType);
 
-            var cameraComp = getCompDef.MakeGenericMethod(cameraType).Invoke(cameraObj, null);
-            if (cameraComp == null) return;
+            // 在 SceneContext 下查找带 Volume 的 GameObject
+            var volumeGo = GameObject.Find("SceneContext/Volume");
+            if (volumeGo == null) { _logger?.Msg("FocusSlider: SceneContext/Volume not found"); return; }
+            _logger?.Msg($"FocusSlider: Found Volume GameObject: {volumeGo.name}");
 
-            var pointerProp = cameraComp.GetType().GetProperty("Pointer",
+            var controllerComp = getControllerComp.Invoke(volumeGo, null);
+            if (controllerComp == null) { _logger?.Msg("FocusSlider: FocusClickedObjectController not found on Volume GO"); return; }
+            _logger?.Msg("FocusSlider: Found FocusClickedObjectController component");
+
+            var pointerProp = controllerComp.GetType().GetProperty("Pointer",
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (pointerProp == null) return;
+            if (pointerProp == null) { _logger?.Msg("FocusSlider: Pointer property not found"); return; }
 
-            var ptr = (System.IntPtr)pointerProp.GetValue(cameraComp);
-            cachedCameraObj = new Il2CppSystem.Object(ptr);
+            var ptr = (System.IntPtr)pointerProp.GetValue(controllerComp);
+            var il2cppControllerObj = new Il2CppSystem.Object(ptr);
+            var il2cppControllerType = Il2CppType.From(controllerType);
 
-            var il2cppCameraType = Il2CppType.From(cameraType);
-            cachedMLensField = FindIl2CppField(il2cppCameraType, "m_Lens");
+            // 获取 _depthOfField 字段
+            var depthOfFieldField = FindIl2CppField(il2cppControllerType, "_depthOfField");
+            if (depthOfFieldField == null) { _logger?.Msg("FocusSlider: _depthOfField field not found"); return; }
 
-            var lensSettingsType = FindType("Il2CppCinemachine.LensSettings");
-            if (lensSettingsType == null) return;
-            cachedDutchField = FindIl2CppField(Il2CppType.From(lensSettingsType), "Dutch");
+            var dofValue = depthOfFieldField.GetValue(il2cppControllerObj);
+            if (dofValue == null) { _logger?.Msg("FocusSlider: _depthOfField is null"); return; }
+
+            cachedDOFInstance = dofValue;
+            _logger?.Msg("FocusSlider: Got DepthOfField from _depthOfField!");
+
+            // 缓存 focusDistance 和 value 字段
+            var il2cppDofType = Il2CppType.From(dofType);
+            cachedFocusDistanceField = FindIl2CppField(il2cppDofType, "focusDistance");
+            _logger?.Msg($"FocusSlider: cachedFocusDistanceField={cachedFocusDistanceField != null}");
+
+            if (cachedFocusDistanceField != null)
+            {
+                var minFloatParamType = FindType("UnityEngine.Rendering.MinFloatParameter");
+                if (minFloatParamType != null)
+                {
+                    var il2cppMinFloatType = Il2CppType.From(minFloatParamType);
+                    cachedValueField = FindIl2CppField(il2cppMinFloatType, "m_Value");
+                    _logger?.Msg($"FocusSlider: cachedValueField={cachedValueField != null}");
+                }
+            }
         }
 
         private static void CacheSliderFields()
@@ -148,29 +158,9 @@ namespace BetterCamera
             if (baseSliderType == null) return;
 
             var il2cppSliderType = Il2CppType.From(baseSliderType);
-            cachedMValueField = FindIl2CppField(il2cppSliderType, "m_Value");
             cachedMMaxValueField = FindIl2CppField(il2cppSliderType, "m_MaxValue");
             cachedMMinValueField = FindIl2CppField(il2cppSliderType, "m_MinValue");
             cachedSetMethod = FindIl2CppMethod(il2cppSliderType, "Set");
-        }
-
-        private static void ConfigureSlider(float maxValue, float minValue, float Value)
-        {
-            if (cachedSliderObj == null) return;
-
-            if (cachedMMaxValueField != null)
-                SetFloatField(cachedSliderObj, cachedMMaxValueField, maxValue);
-            if (cachedMMinValueField != null)
-                SetFloatField(cachedSliderObj, cachedMMinValueField, minValue);
-
-            // 使用 Set 方法设置初始值，确保把手位置正确
-            if (cachedSetMethod != null)
-            {
-                var boxedVal = BoxFloat(Value);
-                var boxedFalse = BoxBool(false);
-
-                cachedSetMethod.Invoke(cachedSliderObj, new Il2CppSystem.Object[] { boxedVal, boxedFalse });
-            }
         }
 
         private static void RegisterSlider()
@@ -213,12 +203,6 @@ namespace BetterCamera
         private static void SetFloatField(Il2CppSystem.Object target, Il2CppSystem.Reflection.FieldInfo field, float value)
         {
             field.SetValue(target, BoxFloat(value));
-        }
-
-        private static void SetDutch(Il2CppSystem.Object lensValue, float value)
-        {
-            SetFloatField(lensValue, cachedDutchField, value);
-            cachedMLensField.SetValue(cachedCameraObj, lensValue);
         }
 
         private static Il2CppSystem.Object BoxFloat(float value)
