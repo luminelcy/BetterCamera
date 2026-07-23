@@ -20,6 +20,7 @@ namespace BetterCamera
             DutchReset.Init(LoggerInstance);
             DutchSlider.Init(LoggerInstance);
             FocusSlider.Init(LoggerInstance);
+            QuitHandle.Init(LoggerInstance);
 
             // 等待所有初始化完毕后，延迟 0.1 秒设置 ZoomSlider 把手位置
             MelonCoroutines.Start(ZoomSlider.DelayedSetSliderValue());

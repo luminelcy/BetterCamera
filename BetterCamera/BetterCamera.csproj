@@ -26,6 +26,7 @@
 		<Compile Include="DutchSlider.cs" />
 		<Compile Include="ZoomSlider.cs" />
 		<Compile Include="FocusSlider.cs" />
+		<Compile Include="QuitHandle.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
