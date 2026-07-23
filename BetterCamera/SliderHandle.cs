@@ -17,6 +17,12 @@ namespace BetterCamera
         private const string BodyRightPath =
             "SceneContext/CommonCanvas/UIPartsGroup/Body/Right";
 
+        private const string ShowRoomStatesPath =
+            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_RoomTopRightMenuObject/Adjust/ViewGroup/P_ShowRoomStatesButtonObject";
+
+        private const string CommonButtonPath =
+            "SceneContext/CommonCanvas/UIPartsGroup/Footer/Right/PoseAndRotateUI/P_SwitchRotateAvatarButtonObject/CommonButton";
+
         public static void Init(MelonLogger.Instance logger)
         {
             var original = GameObject.Find(ZoomHandlePath);
@@ -86,6 +92,39 @@ namespace BetterCamera
                 else logger.Error($"Cannot find Body/Right at path: {BodyRightPath}");
             }
             else logger.Error($"Cannot find SwitchCamera at path: {SwitchCameraPath}");
+
+            var showRoomStatesOriginal = GameObject.Find(ShowRoomStatesPath);
+            if (showRoomStatesOriginal != null)
+            {
+                var footerCenter2 = GameObject.Find(FooterCenterPath);
+                if (footerCenter2 != null)
+                {
+                    var cloneShowRoom = UnityEngine.Object.Instantiate(showRoomStatesOriginal, footerCenter2.transform);
+                    cloneShowRoom.name = "P_BetterCameraShowRoomStates";
+                    cloneShowRoom.transform.localPosition = new Vector3(0f, 150f, 0f);
+                    cloneShowRoom.transform.localScale = new Vector3(0.9f, 0.9f, 0.9f);
+                    var hoveredTips = cloneShowRoom.transform.Find("P_HoveredTipsObject");
+                    if (hoveredTips != null) UnityEngine.Object.Destroy(hoveredTips.gameObject);
+                }
+                else logger.Error($"Cannot find Footer/Center at path: {FooterCenterPath}");
+            }
+            else logger.Error($"Cannot find ShowRoomStates at path: {ShowRoomStatesPath}");
+
+            var commonButtonOriginal = GameObject.Find(CommonButtonPath);
+            if (commonButtonOriginal != null)
+            {
+                var footerCenter3 = GameObject.Find(FooterCenterPath);
+                if (footerCenter3 != null)
+                {
+                    var cloneCommonBtn = UnityEngine.Object.Instantiate(commonButtonOriginal, footerCenter3.transform);
+                    cloneCommonBtn.name = "P_BetterCameraCommonButton";
+                    cloneCommonBtn.transform.localPosition = new Vector3(0f, 150f, 0f);
+                    cloneCommonBtn.transform.localScale = new Vector3(2f, 2f, 2f);
+                    cloneCommonBtn.transform.localEulerAngles = new Vector3(0f, 180f, 90f);
+                }
+                else logger.Error($"Cannot find Footer/Center at path: {FooterCenterPath}");
+            }
+            else logger.Error($"Cannot find CommonButton at path: {CommonButtonPath}");
 
             UnityEngine.Object.Destroy(original);
 
