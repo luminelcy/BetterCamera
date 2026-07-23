@@ -15,6 +15,7 @@ namespace BetterCamera
                 return;
             // LoggerInstance.Msg($"Scene {sceneName} with build index {buildIndex} has been loaded!");
 
+            CameraInitHandle.Init(LoggerInstance);
             SliderHandle.Init(LoggerInstance);
             ZoomSlider.Init(LoggerInstance);
             DutchReset.Init(LoggerInstance);

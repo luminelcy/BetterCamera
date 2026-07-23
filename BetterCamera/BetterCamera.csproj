@@ -27,6 +27,7 @@
 		<Compile Include="ZoomSlider.cs" />
 		<Compile Include="FocusSlider.cs" />
 		<Compile Include="QuitHandle.cs" />
+		<Compile Include="CameraInitHandle.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
