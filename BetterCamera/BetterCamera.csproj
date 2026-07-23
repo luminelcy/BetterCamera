@@ -23,6 +23,7 @@
 		<Compile Include="Core.cs" />
 		<Compile Include="SliderHandle.cs" />
 		<Compile Include="DutchReset.cs" />
+		<Compile Include="DutchSlider.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

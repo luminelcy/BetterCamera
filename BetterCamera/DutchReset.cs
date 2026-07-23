@@ -2,6 +2,7 @@ using MelonLoader;
 using UnityEngine;
 using Il2CppInterop.Runtime;
 using System.Reflection;
+using System.Runtime.InteropServices;
 
 namespace BetterCamera
 {
@@ -10,7 +11,57 @@ namespace BetterCamera
         private const string ButtonPath =
             "SceneContext/CommonCanvas/UIPartsGroup/Footer/Center/P_BetterCameraShowRoomStates/CommonButton/Button";
 
+        private static Il2CppSystem.Object cachedCameraObj;
+        private static Il2CppSystem.Reflection.FieldInfo cachedMLensField;
+        private static Il2CppSystem.Reflection.FieldInfo cachedDutchField;
+
         public static void Init(MelonLogger.Instance logger)
+        {
+            CacheCameraFields();
+            RegisterButton();
+        }
+
+        private static void CacheCameraFields()
+        {
+            var cameraObj = GameObject.Find("SceneContext/P_RoomCameraObject/VirtualCameras/DefaultVirtualCamera");
+            if (cameraObj == null) return;
+
+            var cameraType = FindType("Il2CppCinemachine.CinemachineVirtualCamera");
+            if (cameraType == null) return;
+
+            var getCompDef = GetGenericGetComponent();
+            if (getCompDef == null) return;
+
+            var cameraComp = getCompDef.MakeGenericMethod(cameraType).Invoke(cameraObj, null);
+            if (cameraComp == null) return;
+
+            var pointerProp = cameraComp.GetType().GetProperty("Pointer",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (pointerProp == null) return;
+
+            var ptr = (System.IntPtr)pointerProp.GetValue(cameraComp);
+            cachedCameraObj = new Il2CppSystem.Object(ptr);
+
+            var il2cppCameraType = Il2CppType.From(cameraType);
+            cachedMLensField = FindIl2CppField(il2cppCameraType, "m_Lens");
+
+            var lensSettingsType = FindType("Il2CppCinemachine.LensSettings");
+            if (lensSettingsType == null) return;
+            cachedDutchField = FindIl2CppField(Il2CppType.From(lensSettingsType), "Dutch");
+        }
+
+        private static void ResetDutch()
+        {
+            if (cachedCameraObj == null || cachedMLensField == null || cachedDutchField == null) return;
+
+            var lensValue = cachedMLensField.GetValue(cachedCameraObj);
+            if (lensValue == null) return;
+
+            SetDutch(lensValue, 0f);
+            DutchSlider.ResetSliderValue();
+        }
+
+        private static void RegisterButton()
         {
             var buttonObj = GameObject.Find(ButtonPath);
             if (buttonObj == null) return;
@@ -60,53 +111,22 @@ namespace BetterCamera
             addListenerIl2Cpp.Invoke(onClickValue, new Il2CppSystem.Object[] { (Il2CppSystem.Object)delegateInstance });
         }
 
-        private static void ResetDutch()
+        private static void SetDutch(Il2CppSystem.Object lensValue, float value)
         {
-            var cameraObj = GameObject.Find("SceneContext/P_RoomCameraObject/VirtualCameras/DefaultVirtualCamera");
-            if (cameraObj == null) return;
+            cachedDutchField.SetValue(lensValue, BoxFloat(value));
+            cachedMLensField.SetValue(cachedCameraObj, lensValue);
+        }
 
-            var cameraType = FindType("Il2CppCinemachine.CinemachineVirtualCamera");
-            if (cameraType == null) return;
-
-            var getCompDef = GetGenericGetComponent();
-            if (getCompDef == null) return;
-
-            var cameraComp = getCompDef.MakeGenericMethod(cameraType).Invoke(cameraObj, null);
-            if (cameraComp == null) return;
-
-            var pointerProp = cameraComp.GetType().GetProperty("Pointer",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (pointerProp == null) return;
-
-            var ptr = (System.IntPtr)pointerProp.GetValue(cameraComp);
-            var il2cppObj = new Il2CppSystem.Object(ptr);
-
-            var il2cppCameraType = Il2CppType.From(cameraType);
-            var mLensField = FindIl2CppField(il2cppCameraType, "m_Lens");
-            if (mLensField == null) return;
-
-            var lensValue = mLensField.GetValue(il2cppObj);
-            if (lensValue == null) return;
-
-            var lensSettingsType = FindType("Il2CppCinemachine.LensSettings");
-            if (lensSettingsType == null) return;
-
-            var il2cppLensType = Il2CppType.From(lensSettingsType);
-            var dutchField = FindIl2CppField(il2cppLensType, "Dutch");
-            if (dutchField == null) return;
-
-            // 将 0f 装箱为 Il2CppSystem.Object
+        private static Il2CppSystem.Object BoxFloat(float value)
+        {
             var corlib = IL2CPP.il2cpp_get_corlib();
             var singleClass = IL2CPP.il2cpp_class_from_name(corlib, "System", "Single");
-            var zeroBytes = System.BitConverter.GetBytes(0f);
-            var zeroPtr = System.Runtime.InteropServices.Marshal.AllocHGlobal(zeroBytes.Length);
-            System.Runtime.InteropServices.Marshal.Copy(zeroBytes, 0, zeroPtr, zeroBytes.Length);
-            var boxedPtr = IL2CPP.il2cpp_value_box(singleClass, zeroPtr);
-            System.Runtime.InteropServices.Marshal.FreeHGlobal(zeroPtr);
-            var boxedZero = new Il2CppSystem.Object(boxedPtr);
-
-            dutchField.SetValue(lensValue, boxedZero);
-            mLensField.SetValue(il2cppObj, lensValue);
+            var bytes = System.BitConverter.GetBytes(value);
+            var ptr = Marshal.AllocHGlobal(bytes.Length);
+            Marshal.Copy(bytes, 0, ptr, bytes.Length);
+            var boxedPtr = IL2CPP.il2cpp_value_box(singleClass, ptr);
+            Marshal.FreeHGlobal(ptr);
+            return new Il2CppSystem.Object(boxedPtr);
         }
 
         private static Il2CppSystem.Reflection.FieldInfo FindIl2CppField(Il2CppSystem.Type type, string fieldName)

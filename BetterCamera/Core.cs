@@ -17,6 +17,7 @@ namespace BetterCamera
 
             SliderHandle.Init(LoggerInstance);
             DutchReset.Init(LoggerInstance);
+            DutchSlider.Init(LoggerInstance);
         }
     }
 }
