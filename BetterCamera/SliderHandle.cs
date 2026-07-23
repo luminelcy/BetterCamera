@@ -18,7 +18,7 @@ namespace BetterCamera
             "SceneContext/CommonCanvas/UIPartsGroup/Body/Right";
 
         private const string ShowRoomStatesPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_RoomTopRightMenuObject/Adjust/ViewGroup/";
+            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_RoomTopRightMenuObject/Adjust/ViewGroup/P_ShowRoomStatesButtonObject";
 
         private const string CommonButtonPath =
             "SceneContext/CommonCanvas/UIPartsGroup/Footer/Right/PoseAndRotateUI/P_SwitchRotateAvatarButtonObject/CommonButton";
@@ -26,11 +26,11 @@ namespace BetterCamera
         public static void Init(MelonLogger.Instance logger)
         {
             var original = GameObject.Find(ZoomHandlePath);
-            if (original == null)
-            {
-                logger.Error($"Cannot find P_ZoomHandleObject at path: {ZoomHandlePath}");
-                return;
-            }
+            // if (original == null)
+            // {
+            //     logger.Error($"Cannot find P_ZoomHandleObject at path: {ZoomHandlePath}");
+            //     return;
+            // }
 
             var clone0 = UnityEngine.Object.Instantiate(original, original.transform.parent);
             clone0.name = "P_BetterCameraHandleObject0";
@@ -93,7 +93,10 @@ namespace BetterCamera
             }
             else logger.Error($"Cannot find SwitchCamera at path: {SwitchCameraPath}");
 
-            var showRoomStatesOriginal = FindInactiveByPath(ShowRoomStatesPath, logger);
+            var showRoomStatesOriginal = GameObject.Find(ShowRoomStatesPath);
+            if (showRoomStatesOriginal == null)
+                showRoomStatesOriginal = FindInactiveByPath(ShowRoomStatesPath, logger);
+            
             if (showRoomStatesOriginal != null)
             {
                 var footerCenter2 = GameObject.Find(FooterCenterPath);
@@ -101,6 +104,7 @@ namespace BetterCamera
                 {
                     var cloneShowRoom = UnityEngine.Object.Instantiate(showRoomStatesOriginal, footerCenter2.transform);
                     cloneShowRoom.name = "P_BetterCameraShowRoomStates";
+                    cloneShowRoom.SetActive(true);
                     cloneShowRoom.transform.localPosition = new Vector3(0f, 150f, 0f);
                     cloneShowRoom.transform.localScale = new Vector3(0.9f, 0.9f, 0.9f);
                     var hoveredTips = cloneShowRoom.transform.Find("P_HoveredTipsObject");
@@ -127,7 +131,7 @@ namespace BetterCamera
 
             UnityEngine.Object.Destroy(original);
 
-            logger.Msg("Successfully cloned P_ZoomHandleObject twice!");
+            // logger.Msg("Successfully cloned P_ZoomHandleObject twice!");
         }
 
         private static GameObject FindInactiveByPath(string path, MelonLogger.Instance logger)
@@ -143,6 +147,13 @@ namespace BetterCamera
                 if (current == null)
                 {
                     logger.Msg($"FindInactiveByPath: '{parts[i]}' not found under '{string.Join("/", parts, 0, i)}'");
+                    // 列出实际的子对象名称帮助调试
+                    var parent = root.transform;
+                    for (int j = 1; j < i; j++) parent = parent.Find(parts[j]);
+                    var children = new System.Collections.Generic.List<string>();
+                    for (int c = 0; c < parent.childCount; c++)
+                        children.Add(parent.GetChild(c).name);
+                    logger.Msg($"FindInactiveByPath: children of '{string.Join("/", parts, 0, i)}': [{string.Join(", ", children)}]");
                     return null;
                 }
             }

@@ -41,8 +41,8 @@ namespace BetterCamera
 
         public static IEnumerator DelayedSetSliderValue()
         {
-            // 等待 0.5 秒，确保 UI 布局完成
-            yield return new WaitForSeconds(0.7f);
+            // 等待 1 秒，确保 UI 布局完成
+            yield return new WaitForSeconds(0.5f);
 
             // 读取当前 FOV
             float currentFOV = 60f;
