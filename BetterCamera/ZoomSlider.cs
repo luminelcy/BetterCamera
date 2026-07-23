@@ -41,8 +41,8 @@ namespace BetterCamera
 
         public static IEnumerator DelayedSetSliderValue()
         {
-            // 等待 0.1 秒，确保 UI 布局完成
-            yield return new WaitForSeconds(1f);
+            // 等待 0.5 秒，确保 UI 布局完成
+            yield return new WaitForSeconds(0.7f);
 
             // 读取当前 FOV
             float currentFOV = 60f;
@@ -58,7 +58,8 @@ namespace BetterCamera
             }
 
             // 设置 Slider 值和把手位置
-            
+            if (cachedSliderObj == null || cachedSetMethod == null) yield break;
+
             var boxedVal = BoxFloat(currentFOV);
             var boxedFalse = BoxBool(false);
             cachedSetMethod.Invoke(cachedSliderObj, new Il2CppSystem.Object[] { boxedVal, boxedFalse });

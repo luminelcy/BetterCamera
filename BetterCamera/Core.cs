@@ -11,7 +11,7 @@ namespace BetterCamera
     {
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
-            if (sceneName != "S_RoomSnapScene")
+            if (sceneName != "S_RoomSnapScene" && sceneName != "S_RoomScene" && sceneName != "S_RoomMultiScene")
                 return;
             // LoggerInstance.Msg($"Scene {sceneName} with build index {buildIndex} has been loaded!");
 

@@ -2,7 +2,6 @@ using MelonLoader;
 using UnityEngine;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
@@ -22,16 +21,10 @@ namespace BetterCamera
         private static Il2CppSystem.Reflection.FieldInfo cachedMMinValueField;
         private static Il2CppSystem.Reflection.MethodInfo cachedSetMethod;
 
-        private static MelonLogger.Instance _logger;
-
         public static void Init(MelonLogger.Instance logger)
         {
-            _logger = logger;
             CacheDOFFields();
             CacheSliderFields();
-
-            logger.Msg($"FocusSlider: cachedDOFInstance={cachedDOFInstance != null}, cachedFocusDistanceField={cachedFocusDistanceField != null}, cachedValueField={cachedValueField != null}");
-            logger.Msg($"FocusSlider: cachedSliderObj={cachedSliderObj != null}, cachedSetMethod={cachedSetMethod != null}");
 
             // 设置 max/min
             if (cachedSliderObj != null)
@@ -69,59 +62,47 @@ namespace BetterCamera
             if (focusDistanceObj == null) return;
 
             if (cachedValueField != null)
-            {
                 SetFloatField(focusDistanceObj, cachedValueField, value);
-            }
         }
 
         private static void CacheDOFFields()
         {
             var dofType = FindType("UnityEngine.Rendering.Universal.DepthOfField");
-            if (dofType == null) { _logger?.Msg("FocusSlider: DepthOfField type not found"); return; }
-            _logger?.Msg($"FocusSlider: Found dofType: {dofType.FullName}");
+            if (dofType == null) return;
 
-            // DepthOfField(Clone) 在 FocusClickedObjectController._depthOfField 中
             var controllerType = FindType("Il2CppProject.HomeScene.RoomScene.RoomSnapScene.SwitchCameraFocusModeButtonObject.FocusClickedObjectController");
-            if (controllerType == null) { _logger?.Msg("FocusSlider: FocusClickedObjectController type not found"); return; }
-            _logger?.Msg($"FocusSlider: Found controllerType: {controllerType.FullName}");
+            if (controllerType == null) return;
 
             var getCompDef = GetGenericGetComponent();
             if (getCompDef == null) return;
             var getControllerComp = getCompDef.MakeGenericMethod(controllerType);
 
-            // 在 SceneContext 下查找带 Volume 的 GameObject
             var volumeGo = GameObject.Find("SceneContext/Volume");
             if (volumeGo == null)
                 volumeGo = GameObject.Find("SceneContext/Systems/FocusCameraSwitcher");
-            if (volumeGo == null) { _logger?.Msg("FocusSlider: Volume GameObject not found"); return; }
-            _logger?.Msg($"FocusSlider: Found Volume GameObject: {volumeGo.name}");
+            if (volumeGo == null) return;
 
             var controllerComp = getControllerComp.Invoke(volumeGo, null);
-            if (controllerComp == null) { _logger?.Msg("FocusSlider: FocusClickedObjectController not found on Volume GO"); return; }
-            _logger?.Msg("FocusSlider: Found FocusClickedObjectController component");
+            if (controllerComp == null) return;
 
             var pointerProp = controllerComp.GetType().GetProperty("Pointer",
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (pointerProp == null) { _logger?.Msg("FocusSlider: Pointer property not found"); return; }
+            if (pointerProp == null) return;
 
             var ptr = (System.IntPtr)pointerProp.GetValue(controllerComp);
             var il2cppControllerObj = new Il2CppSystem.Object(ptr);
             var il2cppControllerType = Il2CppType.From(controllerType);
 
-            // 获取 _depthOfField 字段
             var depthOfFieldField = FindIl2CppField(il2cppControllerType, "_depthOfField");
-            if (depthOfFieldField == null) { _logger?.Msg("FocusSlider: _depthOfField field not found"); return; }
+            if (depthOfFieldField == null) return;
 
             var dofValue = depthOfFieldField.GetValue(il2cppControllerObj);
-            if (dofValue == null) { _logger?.Msg("FocusSlider: _depthOfField is null"); return; }
+            if (dofValue == null) return;
 
             cachedDOFInstance = dofValue;
-            _logger?.Msg("FocusSlider: Got DepthOfField from _depthOfField!");
 
-            // 缓存 focusDistance 和 value 字段
             var il2cppDofType = Il2CppType.From(dofType);
             cachedFocusDistanceField = FindIl2CppField(il2cppDofType, "focusDistance");
-            _logger?.Msg($"FocusSlider: cachedFocusDistanceField={cachedFocusDistanceField != null}");
 
             if (cachedFocusDistanceField != null)
             {
@@ -130,7 +111,6 @@ namespace BetterCamera
                 {
                     var il2cppMinFloatType = Il2CppType.From(minFloatParamType);
                     cachedValueField = FindIl2CppField(il2cppMinFloatType, "m_Value");
-                    _logger?.Msg($"FocusSlider: cachedValueField={cachedValueField != null}");
                 }
             }
         }

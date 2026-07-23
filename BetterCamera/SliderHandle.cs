@@ -18,7 +18,7 @@ namespace BetterCamera
             "SceneContext/CommonCanvas/UIPartsGroup/Body/Right";
 
         private const string ShowRoomStatesPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_RoomTopRightMenuObject/Adjust/ViewGroup/P_ShowRoomStatesButtonObject";
+            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_RoomTopRightMenuObject/Adjust/ViewGroup/";
 
         private const string CommonButtonPath =
             "SceneContext/CommonCanvas/UIPartsGroup/Footer/Right/PoseAndRotateUI/P_SwitchRotateAvatarButtonObject/CommonButton";
@@ -93,7 +93,7 @@ namespace BetterCamera
             }
             else logger.Error($"Cannot find SwitchCamera at path: {SwitchCameraPath}");
 
-            var showRoomStatesOriginal = FindInactiveByPath(ShowRoomStatesPath);
+            var showRoomStatesOriginal = FindInactiveByPath(ShowRoomStatesPath, logger);
             if (showRoomStatesOriginal != null)
             {
                 var footerCenter2 = GameObject.Find(FooterCenterPath);
@@ -108,7 +108,6 @@ namespace BetterCamera
                 }
                 else logger.Error($"Cannot find Footer/Center at path: {FooterCenterPath}");
             }
-            else logger.Error($"Cannot find ShowRoomStates at path: {ShowRoomStatesPath}");
 
             var commonButtonOriginal = GameObject.Find(CommonButtonPath);
             if (commonButtonOriginal != null)
@@ -131,18 +130,21 @@ namespace BetterCamera
             logger.Msg("Successfully cloned P_ZoomHandleObject twice!");
         }
 
-        private static GameObject FindInactiveByPath(string path)
+        private static GameObject FindInactiveByPath(string path, MelonLogger.Instance logger)
         {
             var parts = path.Split('/');
-            // 用 GameObject.Find 找到 active 的第一级，再用 Transform.Find 向下查找 inactive 子对象
             var root = GameObject.Find(parts[0]);
-            if (root == null) return null;
+            if (root == null) { logger.Msg($"FindInactiveByPath: root '{parts[0]}' not found"); return null; }
 
             Transform current = root.transform;
             for (int i = 1; i < parts.Length; i++)
             {
                 current = current.Find(parts[i]);
-                if (current == null) return null;
+                if (current == null)
+                {
+                    logger.Msg($"FindInactiveByPath: '{parts[i]}' not found under '{string.Join("/", parts, 0, i)}'");
+                    return null;
+                }
             }
             return current.gameObject;
         }
