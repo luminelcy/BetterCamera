@@ -28,6 +28,7 @@
 		<Compile Include="FocusSlider.cs" />
 		<Compile Include="QuitHandle.cs" />
 		<Compile Include="CameraInitHandle.cs" />
+		<Compile Include="FX\FXUIHandle.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -54,6 +55,9 @@
 	  </Reference>
 	  <Reference Include="UnityEngine.CoreModule">
 	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Dependencies\Il2CppAssemblyGenerator\UnityDependencies\UnityEngine.CoreModule.dll</HintPath>
+	  </Reference>
+	  <Reference Include="UnityEngine.UI">
+	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Dependencies\Il2CppAssemblyGenerator\Cpp2IL\cpp2il_out\UnityEngine.UI.dll</HintPath>
 	  </Reference>
 	  <Reference Include="UnityEngine.UIModule">
 	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Dependencies\Il2CppAssemblyGenerator\UnityDependencies\UnityEngine.UIModule.dll</HintPath>
