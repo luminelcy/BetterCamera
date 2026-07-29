@@ -1,7 +1,7 @@
 ﻿using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(BetterCamera.Core), "BetterCamera", "1.0.1", "kasa", null)]
+[assembly: MelonInfo(typeof(BetterCamera.Core), "BetterCamera", "1.1.0", "kasa", null)]
 [assembly: MelonGame("gogh Japan", "gogh")]
 [assembly: MelonPriority(99)]
 
@@ -17,6 +17,8 @@ namespace BetterCamera
 
             CameraInitHandle.Init(LoggerInstance);
             FX.FXUIHandle.Init(LoggerInstance);
+            FX.BaseSlider.Init(LoggerInstance);
+            FX.EffectSlider.Init(LoggerInstance);
             SliderHandle.Init(LoggerInstance);
             ZoomSlider.Init(LoggerInstance);
             DutchReset.Init(LoggerInstance);

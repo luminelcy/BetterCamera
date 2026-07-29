@@ -29,6 +29,8 @@
 		<Compile Include="QuitHandle.cs" />
 		<Compile Include="CameraInitHandle.cs" />
 		<Compile Include="FX\FXUIHandle.cs" />
+		<Compile Include="FX\BaseSlider.cs" />
+		<Compile Include="FX\EffectSlider.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

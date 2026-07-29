@@ -38,7 +38,7 @@ namespace BetterCamera.FX
                 var baseSlider = UnityEngine.Object.Instantiate(sourceSlider, baseTarget.transform);
                 baseSlider.name = "BaseSlider";
                 baseSlider.SetActive(true);
-                baseSlider.transform.SetAsFirstSibling();
+                baseSlider.transform.SetAsLastSibling();
                 baseSlider.transform.localPosition = new Vector3(0f, 126f, 0f);
 
             }
@@ -49,7 +49,7 @@ namespace BetterCamera.FX
                 var effectSlider = UnityEngine.Object.Instantiate(sourceSlider, effectTarget.transform);
                 effectSlider.name = "EffectSlider";
                 effectSlider.SetActive(true);
-                effectSlider.transform.SetAsFirstSibling();
+                effectSlider.transform.SetAsLastSibling();
                 effectSlider.transform.localPosition = new Vector3(0f, 126f, 0f);
 
             }
