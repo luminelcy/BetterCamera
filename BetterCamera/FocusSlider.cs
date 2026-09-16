@@ -12,9 +12,18 @@ namespace BetterCamera
         private const string SliderPath =
             "SceneContext/CommonCanvas/UIPartsGroup/Body/Right/P_BetterCameraHandleObject1/Slider/Slider";
 
+        // mod 允许的焦点距离下限。游戏原生给 focusDistance 设的 min 是 0.1，
+        // 我们会把它改掉（见 CacheDOFFields）。
+        private const float MinFocusDistance = 0.01f;
+
         private static Il2CppSystem.Object cachedDOFInstance;
         private static Il2CppSystem.Reflection.FieldInfo cachedFocusDistanceField;
         private static Il2CppSystem.Reflection.FieldInfo cachedValueField;
+
+        // focusDistance 这个 MinFloatParameter 实例本身，以及它上面的 min 字段和 set_value 方法
+        private static Il2CppSystem.Object cachedFocusDistanceObj;
+        private static Il2CppSystem.Reflection.FieldInfo cachedMinField;
+        private static Il2CppSystem.Reflection.MethodInfo cachedSetValueMethod;
 
         private static Il2CppSystem.Object cachedSliderObj;
         private static Il2CppSystem.Reflection.FieldInfo cachedMMaxValueField;
@@ -64,15 +73,22 @@ namespace BetterCamera
             _lastSyncedFocus = value;   // 自己写的值记下来，免得下一帧同步又推回去
         }
 
+        /// <summary>
+        /// 写焦点距离。
+        ///
+        /// 走原生的 value 属性（set_value）而不是直写 m_Value 字段 —— 这样和游戏自己的
+        /// SwitchFocus 走同一条路，不会再出现「mod 写进去了、游戏按自己的规则又改回去」
+        /// 的冲突。钳制下限已经在 CacheDOFFields 里改成 MinFocusDistance。
+        /// </summary>
         private static void ApplyFocusDistance(float value)
         {
-            if (cachedDOFInstance == null || cachedFocusDistanceField == null) return;
-
-            var focusDistanceObj = cachedFocusDistanceField.GetValue(cachedDOFInstance);
-            if (focusDistanceObj == null) return;
-
-            if (cachedValueField != null)
-                SetFloatField(focusDistanceObj, cachedValueField, value);
+            if (cachedFocusDistanceObj == null || cachedSetValueMethod == null) return;
+            try
+            {
+                cachedSetValueMethod.Invoke(cachedFocusDistanceObj,
+                    new Il2CppSystem.Object[] { BoxFloat(value) });
+            }
+            catch { }
         }
 
         /// <summary>读当前实际生效的焦点距离（原生对焦改的就是这个值）。取不到返回 NaN。</summary>
@@ -177,6 +193,22 @@ namespace BetterCamera
                 {
                     var il2cppMinFloatType = Il2CppType.From(minFloatParamType);
                     cachedValueField = FindIl2CppField(il2cppMinFloatType, "m_Value");
+                    cachedMinField = FindIl2CppField(il2cppMinFloatType, "min");
+                    cachedSetValueMethod = FindIl2CppMethod(il2cppMinFloatType, "set_value");
+
+                    cachedFocusDistanceObj = cachedFocusDistanceField.GetValue(cachedDOFInstance);
+
+                    // 把游戏给 focusDistance 设的下限换掉。
+                    //
+                    // MinFloatParameter.set_value 的实现是一行：
+                    //     m_Value = Mathf.Max(value, min);
+                    // 所以改 min 就等于改钳制边界，不需要 patch 任何方法。
+                    // 而且 min 是实例字段，只影响这一个 focusDistance ——
+                    // gaussianStart / gaussianEnd 以及游戏里其他所有 MinFloatParameter 都不受影响。
+                    //
+                    // 只在进入场景时设一次。正常玩家碰不到这个字段，Volume 系统也不会重新序列化它。
+                    if (cachedFocusDistanceObj != null && cachedMinField != null)
+                        SetFloatField(cachedFocusDistanceObj, cachedMinField, MinFocusDistance);
                 }
             }
         }
