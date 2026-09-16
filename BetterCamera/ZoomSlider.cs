@@ -23,6 +23,7 @@ namespace BetterCamera
         private static Il2CppSystem.Reflection.FieldInfo cachedMMaxValueField;
         private static Il2CppSystem.Reflection.FieldInfo cachedMMinValueField;
         private static Il2CppSystem.Reflection.MethodInfo cachedSetMethod;
+        private static Il2CppSystem.Reflection.MethodInfo cachedUpdateVisualsMethod;
 
         public static void Init(MelonLogger.Instance logger)
         {
@@ -36,6 +37,9 @@ namespace BetterCamera
                     SetFloatField(cachedSliderObj, cachedMMaxValueField, 120f);
                 if (cachedMMinValueField != null)
                     SetFloatField(cachedSliderObj, cachedMMinValueField, 20f);
+
+                // 改完范围必须刷新手柄，否则它还停在旧范围算出的位置上
+                RefreshSliderVisuals();
             }
 
             RegisterSlider();
@@ -115,6 +119,26 @@ namespace BetterCamera
             cachedMMaxValueField = FindIl2CppField(il2cppSliderType, "m_MaxValue");
             cachedMMinValueField = FindIl2CppField(il2cppSliderType, "m_MinValue");
             cachedSetMethod = FindIl2CppMethod(il2cppSliderType, "Set");
+            cachedUpdateVisualsMethod = FindIl2CppMethod(il2cppSliderType, "UpdateVisuals");
+        }
+
+        /// <summary>
+        /// 强制按当前 min/max 重算手柄位置。
+        ///
+        /// 光写 m_MinValue / m_MaxValue 字段是不会刷新视觉的 —— 手柄位置只在
+        /// Slider.UpdateVisuals() 里算。而 Slider.Set() 开头是
+        ///     if (m_Value == newValue) return;
+        /// 所以「改完范围再 Set 同一个值」也会被这行挡掉，视觉仍然是按旧范围算的。
+        ///
+        /// 具体症状：克隆原生滑条时它的范围是 [40,80] 且值顶在 80（手柄 100%），
+        /// 我们把范围改成 [20,120] 后不去刷新，手柄就停在 100%，
+        /// 而按新范围 80 应该在 60% 处。
+        /// </summary>
+        private static void RefreshSliderVisuals()
+        {
+            if (cachedSliderObj == null || cachedUpdateVisualsMethod == null) return;
+            try { cachedUpdateVisualsMethod.Invoke(cachedSliderObj, null); }
+            catch { }
         }
 
         private static void ConfigureSlider(float maxValue, float minValue, float value)
