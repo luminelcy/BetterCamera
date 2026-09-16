@@ -3,13 +3,11 @@ using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
 using Il2CppProject;
-using Il2CppProject.HomeScene.RoomScene;
-using Il2CppTanitakaTech.StateVariable;
 
 namespace BetterCamera
 {
     /// <summary>
-    /// 摘掉原生的 FOV 钳制。
+    /// 把原生 FOV 钳制的上下界从 40/80 换成 mod 的 20/120。
     ///
     /// 钳制的真身（反汇编确认，VA 0x1812EBAF0）：
     ///     RoomCameraFOV.&lt;&gt;c.&lt;CreateVariable&gt;b__8_0  —  编译器生成的 lambda
@@ -27,6 +25,8 @@ namespace BetterCamera
     ///   并被 ResultObservable 闭包捕获的委托，依然会走到 hook 上。
     ///
     /// 只在 S_RoomSnapScene 里打补丁，离开场景还原，把影响面限制到最小。
+    ///
+    /// 正常路径不打任何日志 —— 这是给最终用户用的 mod，成功是默认状态，不需要播报。
     /// </summary>
     public static class FovClampHook
     {
@@ -36,9 +36,7 @@ namespace BetterCamera
         private static MethodInfo _target;
         private static bool _applied;
 
-        public static bool IsApplied => _applied;
-
-        public static bool Apply(MelonLogger.Instance logger)
+        public static bool Apply()
         {
             if (_applied) return true;
 
@@ -47,39 +45,35 @@ namespace BetterCamera
                 // 直接按名字特征在托管代理里找，不依赖 RoomCameraController 实例 ——
                 // 它的 _roomCameraFOVSetter 要等 Zenject 注入（实测 0.5 秒），
                 // 而补丁应该在场景初始化时就打上。
-                _target = FindManagedMethod(logger);
+                _target = FindManagedMethod();
                 if (_target == null)
                 {
-                    logger.Error("[hook] 托管侧找不到钳制方法，无法 patch");
+                    MelonLogger.Error("[BetterCamera] 找不到 FOV 钳制方法，扩宽视野范围将不生效（其余功能不受影响）");
                     return false;
                 }
-
-                logger.Msg("[hook] 目标 = " + _target.DeclaringType?.FullName + "." + _target.Name);
 
                 _harmony ??= new HarmonyLib.Harmony(HarmonyId);
                 _harmony.Patch(_target, prefix: new HarmonyMethod(typeof(FovClampHook), nameof(Prefix)));
                 _applied = true;
-                logger.Msg("[hook] 补丁已打上（FOV 上下界 40/80 已解除）");
                 return true;
             }
             catch (Exception e)
             {
-                logger.Error("[hook] Apply 失败: " + e.GetType().Name + ": " + e.Message);
+                MelonLogger.Error("[BetterCamera] FOV 钳制补丁失败: " + e.GetType().Name + ": " + e.Message);
                 return false;
             }
         }
 
-        public static void Remove(MelonLogger.Instance logger)
+        public static void Remove()
         {
             if (!_applied || _target == null) return;
             try
             {
                 _harmony?.Unpatch(_target, HarmonyPatchType.All, HarmonyId);
-                logger.Msg("[hook] OK 补丁已撤销");
             }
             catch (Exception e)
             {
-                logger.Error("[hook] Unpatch 失败: " + e.GetType().Name + ": " + e.Message);
+                MelonLogger.Error("[BetterCamera] FOV 钳制补丁撤销失败: " + e.GetType().Name + ": " + e.Message);
             }
             finally
             {
@@ -95,8 +89,8 @@ namespace BetterCamera
         /// <summary>
         /// 替换原生的钳制实现。
         ///
-        /// 注意不要简单地「去掉钳制」—— 实测那样做时滚轮路径会把 FOV 一路推到 128 以上，
-        /// 再滚就更大，投影会坏掉。原生这段代码本来就是在保护相机。
+        /// 注意这不是简单地「去掉钳制」—— 实测完全取消边界后滚轮路径会把 FOV 一路推到
+        /// 128 以上，再滚还会更大，投影会坏掉。原生这段代码本来就是在保护相机。
         /// 正确做法是把上下界换成 mod 的扩宽范围，其余语义（&lt;=0 兜底）保持不变。
         ///
         /// 返回 false = 跳过原方法。
@@ -118,7 +112,7 @@ namespace BetterCamera
         /// 注意 GetTypes() 在大程序集上会抛 ReflectionTypeLoadException（部分类型依赖
         /// 缺失），必须从异常里取已加载的那部分，否则恰好会跳过目标所在的大程序集。
         /// </summary>
-        private static MethodInfo FindManagedMethod(MelonLogger.Instance logger)
+        private static MethodInfo FindManagedMethod()
         {
             const BindingFlags BF = BindingFlags.Public | BindingFlags.NonPublic |
                                     BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly;
@@ -131,27 +125,23 @@ namespace BetterCamera
                 Type[] types;
                 try { types = asm.GetTypes(); }
                 catch (ReflectionTypeLoadException ex) { types = ex.Types; }
-                catch (Exception e) { logger.Msg("[hook]   " + an + " GetTypes 失败: " + e.GetType().Name); continue; }
+                catch { continue; }
                 if (types == null) continue;
 
-                int ok = 0, total = 0;
                 foreach (var t in types)
                 {
                     if (t == null) continue;
-                    total++;
+
                     MethodInfo[] ms;
                     try { ms = t.GetMethods(BF); } catch { continue; }
-                    ok++;
 
                     foreach (var m in ms)
                     {
                         if (m.Name.IndexOf("CreateVariable", StringComparison.Ordinal) < 0) continue;
                         if (!m.ReturnType.Name.Contains("RoomCameraFOV")) continue;
-                        logger.Msg("[hook]   命中 " + t.FullName + "." + m.Name);
                         return m;
                     }
                 }
-                logger.Msg("[hook]   " + an + ": 可用类型 " + ok + "/" + total);
             }
             return null;
         }

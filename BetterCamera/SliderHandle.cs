@@ -138,7 +138,7 @@ namespace BetterCamera
         {
             var parts = path.Split('/');
             var root = GameObject.Find(parts[0]);
-            if (root == null) { logger.Msg($"FindInactiveByPath: root '{parts[0]}' not found"); return null; }
+            if (root == null) return null;
 
             Transform current = root.transform;
             for (int i = 1; i < parts.Length; i++)
@@ -146,14 +146,9 @@ namespace BetterCamera
                 current = current.Find(parts[i]);
                 if (current == null)
                 {
-                    logger.Msg($"FindInactiveByPath: '{parts[i]}' not found under '{string.Join("/", parts, 0, i)}'");
-                    // 列出实际的子对象名称帮助调试
-                    var parent = root.transform;
-                    for (int j = 1; j < i; j++) parent = parent.Find(parts[j]);
-                    var children = new System.Collections.Generic.List<string>();
-                    for (int c = 0; c < parent.childCount; c++)
-                        children.Add(parent.GetChild(c).name);
-                    logger.Msg($"FindInactiveByPath: children of '{string.Join("/", parts, 0, i)}': [{string.Join(", ", children)}]");
+                    // 只在路径确实找不到时打一行 —— 原来是逐级 + 列出全部子节点名，
+                    // 那是开发期调试用的，对用户是噪音
+                    logger.Warning($"[BetterCamera] 未找到 UI 路径: {path}");
                     return null;
                 }
             }
