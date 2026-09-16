@@ -26,35 +26,48 @@ namespace BetterCamera
 
         public static void OnQuit()
         {
-            if (cachedCameraObj == null || cachedMLensField == null) return;
+            float currentFov = float.NaN;
 
-            var lensValue = cachedMLensField.GetValue(cachedCameraObj);
-            if (lensValue == null) return;
-
-            // Dutch = 0
-            if (cachedDutchField != null)
-                cachedDutchField.SetValue(lensValue, BoxFloat(0f));
-
-            // FieldOfView: >80 → 80, <40 → 40, 其他不变
-            if (cachedFieldOfViewField != null)
+            if (cachedCameraObj != null && cachedMLensField != null)
             {
-                var fovObj = cachedFieldOfViewField.GetValue(lensValue);
-                if (fovObj != null)
+                var lensValue = cachedMLensField.GetValue(cachedCameraObj);
+                if (lensValue != null)
                 {
-                    var fov = UnboxFloat(fovObj);
-                    if (fov > 80f)
-                        cachedFieldOfViewField.SetValue(lensValue, BoxFloat(80f));
-                    else if (fov < 40f)
-                        cachedFieldOfViewField.SetValue(lensValue, BoxFloat(40f));
+                    // Dutch = 0
+                    if (cachedDutchField != null)
+                        cachedDutchField.SetValue(lensValue, BoxFloat(0f));
+
+                    // 只读出 FOV 备后面用，这里不写它 —— 见下方说明
+                    if (cachedFieldOfViewField != null)
+                    {
+                        var fovObj = cachedFieldOfViewField.GetValue(lensValue);
+                        if (fovObj != null)
+                            currentFov = UnboxFloat(fovObj);
+                    }
+
+                    // NearClipPlane = 0.1
+                    if (cachedNearClipPlaneField != null)
+                        cachedNearClipPlaneField.SetValue(lensValue, BoxFloat(0.1f));
+
+                    // 先写回 Dutch / NearClipPlane
+                    cachedMLensField.SetValue(cachedCameraObj, lensValue);
                 }
             }
 
-            // NearClipPlane = 0.1
-            if (cachedNearClipPlaneField != null)
-                cachedNearClipPlaneField.SetValue(lensValue, BoxFloat(0.1f));
+            // FOV 收回原生范围（>80 → 80，<40 → 40，区间内不动）—— 走原生变量而不是直写 m_Lens。
+            //
+            // 顺序很关键：游戏 UpdateFOV 是「整块读 m_Lens → 只改 FieldOfView → 整块写回」，
+            // 所以必须先把 Dutch / NearClipPlane 落盘，再调 Set()。反过来会被 UpdateFOV
+            // 的整块写回覆盖掉（它读到的是改之前的旧值）。
+            if (!float.IsNaN(currentFov))
+            {
+                float clamped = currentFov;
+                if (clamped > 80f) clamped = 80f;
+                else if (clamped < 40f) clamped = 40f;
 
-            // 写回 m_Lens
-            cachedMLensField.SetValue(cachedCameraObj, lensValue);
+                if (clamped != currentFov)
+                    NativeFovChannel.Set(clamped);
+            }
         }
 
         private static void RegisterButton()

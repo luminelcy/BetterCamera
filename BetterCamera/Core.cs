@@ -1,4 +1,4 @@
-﻿using MelonLoader;
+using MelonLoader;
 using UnityEngine;
 
 [assembly: MelonInfo(typeof(BetterCamera.Core), "BetterCamera", "1.1.0", "kasa", null)]
@@ -9,11 +9,15 @@ namespace BetterCamera
 {
     public class Core : MelonMod
     {
+        private const string TargetScene = "S_RoomSnapScene";
+
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
-            if (sceneName != "S_RoomSnapScene")
+            if (sceneName != TargetScene)
                 return;
-            // LoggerInstance.Msg($"Scene {sceneName} with build index {buildIndex} has been loaded!");
+
+            // 摘掉原生的 FOV 钳制（只在拍照场景内生效，见 FovClampHook）
+            FovClampHook.Apply(LoggerInstance);
 
             CameraInitHandle.Init(LoggerInstance);
             FX.FXUIHandle.Init(LoggerInstance);
@@ -25,10 +29,31 @@ namespace BetterCamera
             DutchSlider.Init(LoggerInstance);
             FocusSlider.Init(LoggerInstance);
             QuitHandle.Init(LoggerInstance);
-            
+        }
 
-            // 等待所有初始化完毕后，延迟 1 秒设置 ZoomSlider 把手位置
-            MelonCoroutines.Start(ZoomSlider.DelayedSetSliderValue());
+        public override void OnSceneWasUnloaded(int buildIndex, string sceneName)
+        {
+            if (sceneName != TargetScene)
+                return;
+
+            // 离开拍照场景立刻还原原生钳制，把影响面限制在这个场景内
+            FovClampHook.Remove(LoggerInstance);
+
+            // 相机对象随场景销毁，清掉缓存引用免得指着已销毁对象
+            NativeFovChannel.Reset();
+        }
+
+        public override void OnApplicationQuit()
+        {
+            // 兜底：万一场景卸载回调没走到，别把补丁留在这个进程里
+            FovClampHook.Remove(LoggerInstance);
+        }
+
+        public override void OnUpdate()
+        {
+            // 每帧把原生 FOV 同步到滑条手柄上。
+            // 这是本次改造的核心 —— 滚轮/键盘改 FOV 时手柄要跟着走。
+            ZoomSlider.SyncFromNative();
         }
     }
 }

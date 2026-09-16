@@ -31,6 +31,8 @@
 		<Compile Include="FX\FXUIHandle.cs" />
 		<Compile Include="FX\BaseSlider.cs" />
 		<Compile Include="FX\EffectSlider.cs" />
+		<Compile Include="FovClampHook.cs" />
+		<Compile Include="NativeFovChannel.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -49,6 +51,9 @@
 	  <Reference Include="MelonLoader">
 	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\net6\MelonLoader.dll</HintPath>
 	  </Reference>
+	  <Reference Include="0Harmony">
+	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\net6\0Harmony.dll</HintPath>
+	  </Reference>
 	  <Reference Include="Il2CppInterop.Runtime">
 	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\net6\Il2CppInterop.Runtime.dll</HintPath>
 	  </Reference>
@@ -63,6 +68,29 @@
 	  </Reference>
 	  <Reference Include="UnityEngine.UIModule">
 	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Dependencies\Il2CppAssemblyGenerator\UnityDependencies\UnityEngine.UIModule.dll</HintPath>
+	  </Reference>
+
+	  <!-- 游戏程序集：用于接入原生 RoomCameraFOV 响应式变量 -->
+	  <Reference Include="Il2CppBehaviourAssemblyDefinition">
+	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Il2CppAssemblies\Il2CppBehaviourAssemblyDefinition.dll</HintPath>
+	  </Reference>
+	  <Reference Include="Il2CppStateVariable">
+	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Il2CppAssemblies\Il2CppStateVariable.dll</HintPath>
+	  </Reference>
+	  <Reference Include="Il2CppR3">
+	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Il2CppAssemblies\Il2CppR3.dll</HintPath>
+	  </Reference>
+	  <Reference Include="Il2CppDomainAssemblyDefinition">
+	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Il2CppAssemblies\Il2CppDomainAssemblyDefinition.dll</HintPath>
+	  </Reference>
+	  <Reference Include="Il2CppCinemachine">
+	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Il2CppAssemblies\Il2CppCinemachine.dll</HintPath>
+	  </Reference>
+	  <Reference Include="Il2CppViewAssemblyDefinition">
+	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Il2CppAssemblies\Il2CppViewAssemblyDefinition.dll</HintPath>
+	  </Reference>
+	  <Reference Include="Unity.InputSystem">
+	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Il2CppAssemblies\Unity.InputSystem.dll</HintPath>
 	  </Reference>
 	</ItemGroup>
 </Project>

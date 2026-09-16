@@ -4,6 +4,9 @@ using Il2CppInterop.Runtime;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Collections;
+using Il2CppProject;
+using Il2CppProject.HomeScene.RoomScene;
+using Il2CppTanitakaTech.StateVariable;
 
 namespace BetterCamera
 {
@@ -12,9 +15,8 @@ namespace BetterCamera
         private const string SliderPath =
             "SceneContext/CommonCanvas/UIPartsGroup/Body/Right/P_BetterCameraHandleObject0/Slider/Slider";
 
-        private static Il2CppSystem.Object cachedCameraObj;
-        private static Il2CppSystem.Reflection.FieldInfo cachedMLensField;
-        private static Il2CppSystem.Reflection.FieldInfo cachedFOVField;
+        // 手柄同步用的基准值。原生 FOV 的读写统一走 NativeFovChannel。
+        private static float _lastSyncedFov = float.NaN;
 
         private static Il2CppSystem.Object cachedSliderObj;
         private static Il2CppSystem.Reflection.FieldInfo cachedMValueField;
@@ -24,10 +26,10 @@ namespace BetterCamera
 
         public static void Init(MelonLogger.Instance logger)
         {
-            CacheCameraFields();
+            NativeFovChannel.Ensure();
             CacheSliderFields();
 
-            // 设置 max/min
+            // 滑条 UI 的上下限保持 20-120（这是本 mod 相对原生 40-80 的扩宽）
             if (cachedSliderObj != null)
             {
                 if (cachedMMaxValueField != null)
@@ -39,83 +41,49 @@ namespace BetterCamera
             RegisterSlider();
         }
 
-        public static IEnumerator DelayedSetSliderValue()
+        /// <summary>
+        /// 每帧把原生 FOV 同步到滑条手柄。滚轮和键盘走的是游戏的 ZoomCamera →
+        /// 写同一个 RoomCameraFOV 变量 → UpdateFOV 改相机 m_Lens，所以这里读到
+        /// m_Lens 的变化就说明外部改了 FOV，把滑条跟着挪过去。
+        /// </summary>
+        public static void SyncFromNative()
         {
-            // 等待 1 秒，确保 UI 布局完成
-            yield return new WaitForSeconds(0.5f);
+            if (cachedSliderObj == null || cachedSetMethod == null) return;
+            if (!NativeFovChannel.TryGetCurrent(out float fov)) return;
 
-            // 读取当前 FOV
-            float currentFOV = 60f;
-            if (cachedCameraObj != null && cachedMLensField != null && cachedFOVField != null)
+            if (float.IsNaN(_lastSyncedFov))
             {
-                var lensValue = cachedMLensField.GetValue(cachedCameraObj);
-                if (lensValue != null)
-                {
-                    var fovIl2cpp = cachedFOVField.GetValue(lensValue);
-                    if (fovIl2cpp != null)
-                        currentFOV = UnboxFloat(fovIl2cpp);
-                }
+                // 首次拿到值：对齐一次，之后只在外部改动时才动滑条
+                _lastSyncedFov = fov;
+                SetSliderQuiet(fov);
+                return;
             }
 
-            // 设置 Slider 值和把手位置
-            if (cachedSliderObj == null || cachedSetMethod == null) yield break;
+            if (Mathf.Abs(fov - _lastSyncedFov) < 0.01f) return;
 
-            var boxedVal = BoxFloat(currentFOV);
-            var boxedFalse = BoxBool(false);
-            cachedSetMethod.Invoke(cachedSliderObj, new Il2CppSystem.Object[] { boxedVal, boxedFalse });
-            RegisterSlider();
+            _lastSyncedFov = fov;
+            SetSliderQuiet(fov);
         }
 
-        public static void ResetSliderValue()
+        /// <summary>写滑条值但不触发回调（sendCallback=false），避免和设备回环。</summary>
+        private static void SetSliderQuiet(float value)
         {
-            if (cachedCameraObj == null || cachedMLensField == null || cachedFOVField == null) return;
-
-            var lensValue = cachedMLensField.GetValue(cachedCameraObj);
-            if (lensValue == null) return;
-
-            var fovIl2cpp = cachedFOVField.GetValue(lensValue);
-            if (fovIl2cpp == null) return;
-
-            ConfigureSlider(120f, 20f, UnboxFloat(fovIl2cpp));
+            if (cachedSliderObj == null || cachedSetMethod == null) return;
+            try
+            {
+                var boxedVal = BoxFloat(value);
+                var boxedFalse = BoxBool(false);
+                cachedSetMethod.Invoke(cachedSliderObj, new Il2CppSystem.Object[] { boxedVal, boxedFalse });
+            }
+            catch { }
         }
 
         private static void OnSliderChanged(float value)
         {
-            if (cachedCameraObj == null || cachedMLensField == null || cachedFOVField == null) return;
-
-            var lensValue = cachedMLensField.GetValue(cachedCameraObj);
-            if (lensValue == null) return;
-
-            SetFOV(lensValue, value);
-        }
-
-        private static void CacheCameraFields()
-        {
-            var cameraObj = GameObject.Find("SceneContext/P_RoomCameraObject/VirtualCameras/DefaultVirtualCamera");
-            if (cameraObj == null) return;
-
-            var cameraType = FindType("Il2CppCinemachine.CinemachineVirtualCamera");
-            if (cameraType == null) return;
-
-            var getCompDef = GetGenericGetComponent();
-            if (getCompDef == null) return;
-
-            var cameraComp = getCompDef.MakeGenericMethod(cameraType).Invoke(cameraObj, null);
-            if (cameraComp == null) return;
-
-            var pointerProp = cameraComp.GetType().GetProperty("Pointer",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (pointerProp == null) return;
-
-            var ptr = (System.IntPtr)pointerProp.GetValue(cameraComp);
-            cachedCameraObj = new Il2CppSystem.Object(ptr);
-
-            var il2cppCameraType = Il2CppType.From(cameraType);
-            cachedMLensField = FindIl2CppField(il2cppCameraType, "m_Lens");
-
-            var lensSettingsType = FindType("Il2CppCinemachine.LensSettings");
-            if (lensSettingsType == null) return;
-            cachedFOVField = FindIl2CppField(Il2CppType.From(lensSettingsType), "FieldOfView");
+            // 不再直接写 m_Lens —— 写游戏的响应式变量，
+            // 由它自己的 UpdateFOV 去改相机，这样滚轮/键盘/滑条三者同步
+            if (NativeFovChannel.Set(value))
+                _lastSyncedFov = value;
         }
 
         private static void CacheSliderFields()
@@ -209,12 +177,6 @@ namespace BetterCamera
         private static void SetFloatField(Il2CppSystem.Object target, Il2CppSystem.Reflection.FieldInfo field, float value)
         {
             field.SetValue(target, BoxFloat(value));
-        }
-
-        private static void SetFOV(Il2CppSystem.Object lensValue, float value)
-        {
-            SetFloatField(lensValue, cachedFOVField, value);
-            cachedMLensField.SetValue(cachedCameraObj, lensValue);
         }
 
         private static float UnboxFloat(Il2CppSystem.Object obj)
