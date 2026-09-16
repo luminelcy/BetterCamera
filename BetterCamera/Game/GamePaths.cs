@@ -57,6 +57,13 @@ namespace BetterCamera.Game
         // 本 mod 在滤镜菜单里新增的面板（克隆 ExposureAndTemperatureLayout 而来）
         public const string NameColorAdjustLayout = "P_BCColorAdjustLayout";
         public const string ColorAdjustLayout = ControlsLayout + "/" + NameColorAdjustLayout;
+
+        // 滤镜菜单本体与标签按钮
+        public const string FilterMenuObject = Canvas + "/Header/P_FilterMenuObject";
+        public const string TabButtonsLayout = FilterMenuBody + "/TabButtonsLayout";
+        public const string NativeTabButtonTemplate =
+            TabButtonsLayout + "/P_FilterMenuTabButtonObject_ExposureAndTemperature";
+        public const string NameColorAdjustTabButton = "P_BCColorAdjustTabButton";
         public const string FiltersListLayout = FilterMenu + "/FiltersListLayout";
         public const string SpecialEffectsListLayout = FilterMenu + "/SpecialEffectsListLayout";
         public const string FiltersListViewport = FiltersListLayout + "/P_FiltersListObject/ScrollRect/Viewport";

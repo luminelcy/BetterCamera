@@ -46,11 +46,17 @@ namespace BetterCamera.Features
 
         private static Il2CppSystem.Type _paramType;
 
+        /// <summary>FilterMenuType 只用了 0/1/2（Filter / ExposureAndColorTemperature / Effects），3 是空闲的。</summary>
+        private const int MyMenuTypeValue = 3;
+
         public static void Init()
         {
             if (!CacheTarget()) return;
 
-            BuildUi();
+            var container = BuildUi();
+            if (container == null) return;
+
+            BuildTab(container);
 
             // 容器建好了但拿不到滑条的，单独跳过；能接的先接上
             int wired = 0;
@@ -112,15 +118,15 @@ namespace BetterCamera.Features
             return false;
         }
 
-        /// <summary>克隆原生容器和滑条单元，摆进 ControlsLayout。</summary>
-        private static void BuildUi()
+        /// <summary>克隆原生容器和滑条单元，摆进 ControlsLayout。返回新面板，失败返回 null。</summary>
+        private static GameObject BuildUi()
         {
             var template = GameObject.Find(GamePaths.ExposureAndTemperatureLayout);
             var parent = GameObject.Find(GamePaths.ControlsLayout);
             if (template == null || parent == null)
             {
                 MelonLogger.Warning("[BetterCamera] 滤镜菜单结构变了，ColorAdjust 面板未创建");
-                return;
+                return null;
             }
 
             var container = UnityEngine.Object.Instantiate(template, parent.transform);
@@ -136,13 +142,13 @@ namespace BetterCamera.Features
             }
 
             var slidersLayout = container.transform.Find(SlidersLayoutName);
-            if (slidersLayout == null) { MelonLogger.Warning("[BetterCamera] 克隆体里没有 SlidersLayout"); return; }
+            if (slidersLayout == null) { MelonLogger.Warning("[BetterCamera] 克隆体里没有 SlidersLayout"); return null; }
 
             // 原模板里有两个滑条单元（曝光 / 色温）。只留一个当模板，克隆出我们需要的条数。
             Transform unit = slidersLayout.Find(SliderUnitName);
             if (unit == null && slidersLayout.childCount > 0)
                 unit = slidersLayout.GetChild(0);
-            if (unit == null) { MelonLogger.Warning("[BetterCamera] 找不到滑条单元模板"); return; }
+            if (unit == null) { MelonLogger.Warning("[BetterCamera] 找不到滑条单元模板"); return null; }
 
             // 只留第一个，其余（色温）删掉
             for (int i = slidersLayout.childCount - 1; i >= 0; i--)
@@ -160,6 +166,8 @@ namespace BetterCamera.Features
                 clone.name = Knobs[i].CloneName;
                 Knobs[i].Slider = FindSliderIn(clone);
             }
+
+            return container;
         }
 
         private static Il2CppSystem.Object FindSliderIn(Transform unit)
@@ -176,6 +184,122 @@ namespace BetterCamera.Features
             var cur = t.parent;
             while (cur != null) { sb.Insert(0, cur.name + "/"); cur = cur.parent; }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// 建一个真正属于本 mod 的标签页。
+        ///
+        /// 原生的切换链路是：
+        ///     点标签 → 设 CurrentFilterMenuType → Presenter 观察者触发
+        ///       → View.SetFilterMenuObjectVisible(type)
+        ///         → 查 _filterMenuObjects 字典 → 只显示命中的那个面板
+        ///
+        /// 所以我们把「新枚举值 → 本面板的 CanvasGroup」也塞进那个字典，再克隆一个标签按钮，
+        /// 点击时直接调 SetFilterMenuObjectVisible。于是：
+        ///   - 点我们的标签：走游戏自己的机制显示本面板、隐藏其他
+        ///   - 点原生标签：游戏自己的机制同样会隐藏本面板（我们的条目就在它查的那个字典里）
+        /// 完全不用自己写显示/隐藏逻辑，也不会和游戏打架。
+        ///
+        /// FilterMenuType 只用了 0/1/2，这里占 3。
+        /// </summary>
+        private static void BuildTab(GameObject container)
+        {
+            var view = NativeRefs.FindComponent(GamePaths.FilterMenuObject,
+                "Il2CppProject.HomeScene.RoomScene.RoomSnapScene.FilterMenuObject.FilterMenuObjectView");
+            if (view == null) { MelonLogger.Warning("[BetterCamera] 拿不到 FilterMenuObjectView，标签未建"); return; }
+
+            var viewType = view.GetIl2CppType();
+            var setVisible = Il2CppReflection.FindIl2CppMethod(viewType, "SetFilterMenuObjectVisible");
+            if (setVisible == null) { MelonLogger.Warning("[BetterCamera] 找不到 SetFilterMenuObjectVisible"); return; }
+
+            // ① 把新条目塞进「标签类型 → CanvasGroup」的字典
+            var dict = Il2CppReflection.FindIl2CppField(viewType, "_filterMenuObjects")?.GetValue(view);
+            if (dict == null) { MelonLogger.Warning("[BetterCamera] 拿不到 _filterMenuObjects"); return; }
+
+            var canvasGroup = NativeRefs.FindComponent(FullPath(container.transform), "UnityEngine.CanvasGroup");
+            if (canvasGroup == null) { MelonLogger.Warning("[BetterCamera] 面板没有 CanvasGroup"); return; }
+
+            var addMethod = FindMethodByParamCount(dict.GetIl2CppType(), "Add", 2);
+            if (addMethod == null) { MelonLogger.Warning("[BetterCamera] 字典上没有 Add(K,V)"); return; }
+
+            try
+            {
+                addMethod.Invoke(dict, new Il2CppSystem.Object[]
+                {
+                    Il2CppReflection.BoxInt(MyMenuTypeValue),
+                    canvasGroup,
+                });
+            }
+            catch (Exception e)
+            {
+                MelonLogger.Error("[BetterCamera] 注册标签页失败（枚举键可能没转换成功）: " + e.Message);
+                return;
+            }
+
+            // ② 克隆标签按钮
+            var template = GameObject.Find(GamePaths.NativeTabButtonTemplate);
+            var tabParent = GameObject.Find(GamePaths.TabButtonsLayout);
+            if (template == null || tabParent == null) { MelonLogger.Warning("[BetterCamera] 找不到标签按钮模板"); return; }
+
+            var tab = UnityEngine.Object.Instantiate(template, tabParent.transform);
+            tab.name = GamePaths.NameColorAdjustTabButton;
+            var tabPath = FullPath(tab.transform);
+
+            // 克隆来的按钮带着游戏的 onClick（点下去会切到「曝光/色温」），清掉换成我们的
+            ClearClickListeners(tabPath);
+
+            var button = NativeRefs.FindComponent(tabPath, "UnityEngine.UI.Button");
+            if (button != null)
+                UnityEventBridge.AddClickListener(button, () => ShowTab(setVisible, view));
+        }
+
+        private static void ShowTab(Il2CppSystem.Reflection.MethodInfo setVisible, Il2CppSystem.Object view)
+        {
+            try
+            {
+                setVisible.Invoke(view, new Il2CppSystem.Object[] { Il2CppReflection.BoxInt(MyMenuTypeValue) });
+            }
+            catch (Exception e)
+            {
+                MelonLogger.Error("[BetterCamera] 切到 ColorAdjust 页失败: " + e.Message);
+            }
+        }
+
+        private static void ClearClickListeners(string buttonGoPath)
+        {
+            try
+            {
+                var button = NativeRefs.FindComponent(buttonGoPath, "UnityEngine.UI.Button");
+                if (button == null) return;
+
+                var evt = Il2CppReflection
+                    .FindIl2CppField(NativeRefs.TypeOf("UnityEngine.UI.Button"), "m_OnClick")
+                    ?.GetValue(button);
+                if (evt == null) return;
+
+                Il2CppReflection.FindIl2CppMethod(evt.GetIl2CppType(), "RemoveAllListeners")?.Invoke(evt, null);
+            }
+            catch (Exception e)
+            {
+                MelonLogger.Warning("[BetterCamera] 清理标签按钮监听失败: " + e.Message);
+            }
+        }
+
+        /// <summary>按名字 + 参数个数找方法 —— 反射里同名重载很常见（如 Add 有 IDictionary 的和泛型的）。</summary>
+        private static Il2CppSystem.Reflection.MethodInfo FindMethodByParamCount(
+            Il2CppSystem.Type type, string name, int paramCount)
+        {
+            var methods = type.GetMethods(
+                Il2CppSystem.Reflection.BindingFlags.Instance |
+                Il2CppSystem.Reflection.BindingFlags.Public |
+                Il2CppSystem.Reflection.BindingFlags.NonPublic);
+            for (int i = 0; i < methods.Length; i++)
+            {
+                if (methods[i].Name != name) continue;
+                try { if (methods[i].GetParameters().Length == paramCount) return methods[i]; }
+                catch { }
+            }
+            return null;
         }
 
         private static bool Wire(Knob k)
