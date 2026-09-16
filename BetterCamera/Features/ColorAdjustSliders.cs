@@ -9,15 +9,25 @@ namespace BetterCamera.Features
     /// <summary>
     /// 把 ColorAdjustments 的参数接成滑条，放进滤镜菜单。
     ///
-    /// 为什么能做：URP 的 VolumeProfile 里本来就挂着 ColorAdjustments 组件
-    /// （和 ColorLookup、WhiteBalance 并列），但游戏只把 ColorLookup→FilterId、
-    /// WhiteBalance→Temperature 做成了控件，ColorAdjustments 的五个参数一个都没用。
-    /// 这几个参数完全空闲，是纯 mod 扩展空间。
+    /// 为什么能做：URP 的 VolumeProfile 里本来就挂着 ColorAdjustments 组件（和 ColorLookup、
+    /// WhiteBalance 并列）。游戏的后处理响应式变量一共四个 —— FilterId / Exposure /
+    /// Temperature / EffectId，对应 ColorLookup、ColorAdjustments.postExposure、
+    /// WhiteBalance、EffectVolume；也就是说 ColorAdjustments 里**只有 postExposure 被游戏用了**，
+    /// 剩下三个（hueShift / saturation / contrast）在整个 game assembly 里只出现过声明，
+    /// 完全空闲，是纯 mod 扩展空间。
+    ///
+    /// ⚠️ 所以这里**没有曝光滑条**：游戏自己的「曝光」写的就是同一个
+    /// ColorAdjustments.postExposure（同一个 BaseVolume），再做一个就是重复的，
+    /// 两边还会互相覆盖。要调曝光用原生那个标签页。
     ///
     /// UI 完全复用原生结构：克隆 ExposureAndTemperatureLayout 拿到同样的容器样式，
     /// 再把里面的滑条单元（标签 + 滑条）克隆成四条。位置和外观与其他面板一致。
     ///
     /// 注意参数必须 overrideState = true 才会生效 —— URP 只应用被 override 的参数。
+    ///
+    /// 标签页的显隐不在这里管，交给 FilterMenuVisibilityHook（它 patch 了原生的
+    /// SetFilterMenuObjectVisible，在游戏自己的切换逻辑之后补一刀）。这里只负责把面板
+    /// 和标签按钮建出来、登记过去。
     /// </summary>
     public static class ColorAdjustSliders
     {
@@ -31,29 +41,50 @@ namespace BetterCamera.Features
         {
             public string CloneName;    // 克隆体名字（UI 契约）
             public string Param;        // ColorAdjustments 上的字段名
-            public string Label;        // 显示给玩家的名字
+            public LabelKey Key;        // 显示给玩家的名字（按当前语言查表）
             public float Min, Max;
             public Il2CppSystem.Object Slider;
             public Il2CppSystem.Object Parameter;
+            public Il2CppSystem.Object LabelTmp;
         }
 
         private static readonly Knob[] Knobs =
         {
-            new Knob { CloneName = "P_BCColorAdjustHue",        Param = "hueShift",     Label = "Hue",        Min = -180f, Max = 180f },
-            new Knob { CloneName = "P_BCColorAdjustSaturation", Param = "saturation",   Label = "Saturation", Min = -100f, Max = 100f },
-            new Knob { CloneName = "P_BCColorAdjustContrast",   Param = "contrast",     Label = "Contrast",   Min = -100f, Max = 100f },
-            new Knob { CloneName = "P_BCColorAdjustExposure",   Param = "postExposure", Label = "Exposure",   Min = -3f,   Max = 3f   },
+            new Knob { CloneName = "P_BCColorAdjustHue",        Param = "hueShift",     Key = LabelKey.Hue,        Min = -180f, Max = 180f },
+            new Knob { CloneName = "P_BCColorAdjustSaturation", Param = "saturation",   Key = LabelKey.Saturation, Min = -100f, Max = 100f },
+            new Knob { CloneName = "P_BCColorAdjustContrast",   Param = "contrast",     Key = LabelKey.Contrast,   Min = -100f, Max = 100f },
         };
 
         private const string LabelNodeName = "CommonLocalizeText";
-        private const string TmpTypeName = "TMPro.TextMeshProUGUI";
-        /// <summary>标签页按钮上的文字。</summary>
-        private const string TabLabel = "Color";
 
+        /// <summary>
+        /// 注意前缀：Il2CppInterop 会给会和 .NET 撞名的命名空间加 Il2Cpp（Project → Il2CppProject
+        /// 也是同一回事），TMPro 就在这个名单里。写 "TMPro.TextMeshProUGUI" 是查不到的，
+        /// FindType 返回 null，然后一切静默失效。
+        /// </summary>
+        private const string TmpTypeName = "Il2CppTMPro.TextMeshProUGUI";
+        private const string LocalizeStringEventTypeName =
+            "UnityEngine.Localization.Components.LocalizeStringEvent";
+        private const string TabViewTypeName =
+            "Il2CppProject.HomeScene.RoomScene.RoomSnapScene.FilterMenuObject.FilterMenuTabButtonObject.FilterMenuTabButtonObjectView";
+        private const string TabInstallerTypeName =
+            "Il2CppProject.HomeScene.RoomScene.RoomSnapScene.FilterMenuObject.FilterMenuTabButtonObject.FilterMenuTabButtonObjectInstaller";
+        private const string ResetViewTypeName =
+            "Il2CppProject.HomeScene.RoomScene.RoomSnapScene.FilterMenuObject.ResetExposureAndTemperatureButtonObject.ResetExposureAndTemperatureButtonObjectView";
         private static Il2CppSystem.Type _paramType;
 
-        /// <summary>FilterMenuType 只用了 0/1/2（Filter / ExposureAndColorTemperature / Effects），3 是空闲的。</summary>
-        private const int MyMenuTypeValue = 3;
+        /// <summary>标签页按钮上的 TMP（文字挂在 FilterMenuTabButtonObjectView._buttonText 上）。</summary>
+        private static Il2CppSystem.Object _tabLabel;
+
+        /// <summary>
+        /// 文字用哪个语言，固定中文。
+        ///
+        /// 跟随游戏语言的那套（GameLanguage + 每 30 帧扫一次）暂时停用 —— 要恢复的话：
+        ///   1. 这里改回 <c>RefreshLabels(GameLanguage.Current())</c>
+        ///   2. Core.OnUpdate 里恢复 <c>ColorAdjustSliders.SyncLanguage()</c>
+        ///   3. 把 SyncLanguage 和那个帧计数加回来
+        /// </summary>
+        private const string FixedLanguage = "zh-Hans";
 
         public static void Init()
         {
@@ -62,18 +93,11 @@ namespace BetterCamera.Features
             var container = BuildUi();
             if (container == null) return;
 
-            // 标签按钮暂时停用。
-            //
-            // 症状：点一次就卡死游戏，且面板没被正常显示/隐藏。
-            // 原因：往 _filterMenuObjects 字典注册时，键用的是装箱的 Int32，
-            // 而字典的键类型是枚举 FilterMenuType —— 装箱类型对不上，
-            // Add 走的很可能是 IDictionary.Add(object,object) 那个非泛型重载，
-            // 于是存进去的键类型错误，游戏按枚举查不到，内部状态被打乱。
-            //
-            // 要修得先把键装箱成真正的 FilterMenuType（il2cpp 侧按枚举类装箱），
-            // 并且确认拿到的是泛型 Add 而不是非泛型那个。
-            // 在此之前只保留面板（默认隐藏），不再创建标签按钮。
-            // BuildTab(container);
+            var tabView = BuildTab();
+
+            // 登记之后面板立刻被隐藏，往后显隐全部由原生标签切换机制驱动。
+            // tabView 可能为 null（标签没建起来），那时面板就一直藏着 —— 但不影响其余功能。
+            FilterMenuVisibilityHook.Register(container, tabView);
 
             // 容器建好了但拿不到滑条的，单独跳过；能接的先接上
             int wired = 0;
@@ -89,6 +113,13 @@ namespace BetterCamera.Features
                 foreach (var k in Knobs)
                     if (k.Parameter != null) Apply(k, 0f);
             }
+
+            // 标签一个都找不到就是结构变了 —— 这种情况必须报出来，
+            // 因为"每条标签都显示着从模板带过来的文字"看着像正常，很容易没人发现
+            if (Knobs[0].LabelTmp == null)
+                MelonLogger.Warning("[BetterCamera] 找不到滑条标签的 TMP，ColorAdjust 的文字不会被替换");
+
+            RefreshLabels(FixedLanguage);
         }
 
         /// <summary>找 BaseVolume profile 里那个 ColorAdjustments 实例，并缓存参数写入方法。</summary>
@@ -149,20 +180,7 @@ namespace BetterCamera.Features
             var container = UnityEngine.Object.Instantiate(template, parent.transform);
             container.name = GamePaths.NameColorAdjustLayout;
 
-            // 默认隐藏。
-            // 原生面板的显隐由 FilterMenuObjectView.SetFilterMenuObjectVisible 通过 CanvasGroup 控制，
-            // 而我们的面板不在它的显隐体系内（见 BuildTab 的说明），不主动藏起来就会一直叠在
-            // 当前标签的上面。
-            HideContainer(container);
-
-            // 克隆出来的重置按钮会带着游戏的 onClick，点下去会去重置曝光/色温。
-            // 跟本面板无关，去掉免得误导。
-            for (int i = container.transform.childCount - 1; i >= 0; i--)
-            {
-                var c = container.transform.GetChild(i);
-                if (c.name.StartsWith(ResetButtonPrefix, StringComparison.Ordinal))
-                    UnityEngine.Object.Destroy(c.gameObject);
-            }
+            WireResetButton(container);
 
             var slidersLayout = container.transform.Find(SlidersLayoutName);
             if (slidersLayout == null) { MelonLogger.Warning("[BetterCamera] 克隆体里没有 SlidersLayout"); return null; }
@@ -181,52 +199,118 @@ namespace BetterCamera.Features
             }
 
             unit.name = Knobs[0].CloneName;
-            SetLabelText(unit, Knobs[0].Label);
+            Knobs[0].LabelTmp = FindLabel(unit);
             Knobs[0].Slider = FindSliderIn(unit);
 
             for (int i = 1; i < Knobs.Length; i++)
             {
                 var clone = UnityEngine.Object.Instantiate(unit, slidersLayout);
                 clone.name = Knobs[i].CloneName;
-                SetLabelText(clone, Knobs[i].Label);
+                Knobs[i].LabelTmp = FindLabel(clone);
                 Knobs[i].Slider = FindSliderIn(clone);
             }
+
+            // 文字由本 mod 自己写，先把面板里克隆来的本地化事件让开（见 SilenceLocalization）
+            SilenceLocalization(container.transform);
 
             return container;
         }
 
         /// <summary>
-        /// 直接改 TextMeshProUGUI 的文字。
+        /// 找到滑条单元里的标签 TMP 并记下来，文字统一交给 RefreshLabels 写。
         ///
-        /// 为什么不走游戏自己的本地化：CommonLocalizeTextBehaviour 用的是
-        /// LocalizeTextKey 枚举，mod 加不了新 key。直接写 TMP 省事，
-        /// 代价是不随语言切换 —— 这几个名字用英文就够。
+        /// TMP 不在 CommonLocalizeText 它自己身上，而在它的子节点上（实测叫 "Text (TMP)"）。
+        /// 早先直接对 CommonLocalizeText 取 TextMeshProUGUI，拿到的是 null，写入静默失效 ——
+        /// 结果是四条标签一直显示克隆时从模板带过来的文字，全都写着"曝光"。
+        /// 这里改成按组件在子节点里找，不写死子节点名（名字是随版本变的，而这个节点存在的
+        /// 意义就是"里面有个 TMP"）。
         /// </summary>
-        private static void SetLabelText(Transform unit, string text)
+        private static Il2CppSystem.Object FindLabel(Transform unit)
         {
             var label = unit.Find(LabelNodeName);
-            if (label == null) return;
-            SetTmpText(NativeRefs.FindComponent(FullPath(label), TmpTypeName), text);
+            if (label == null) return null;
+
+            for (int i = 0; i < label.childCount; i++)
+            {
+                var tmp = NativeRefs.FindComponent(label.GetChild(i), TmpTypeName);
+                if (tmp != null) return tmp;
+            }
+            return null;
         }
 
-        /// <summary>标签按钮的文字挂在 FilterMenuTabButtonObjectView._buttonText 上。</summary>
-        private static void SetTabText(string tabPath, string text)
+        /// <summary>
+        /// 关掉子树里所有的 LocalizeStringEvent。
+        ///
+        /// 本 mod 的面板和标签按钮都是克隆来的，这些节点上的本地化事件指向的是模板
+        /// （曝光/色温面板）的 key —— 它们会把我们写进去的文字按游戏自己的 key 覆盖回去。
+        /// 文字既然由本 mod 自己管，就得先把它们让开。
+        ///
+        /// 只关字符串事件，不动 LocalizeTmpFontEvent —— 字体该跟着语言走，那正是我们要的。
+        /// </summary>
+        private static void SilenceLocalization(Transform node)
         {
-            var view = NativeRefs.FindComponent(tabPath,
-                "Il2CppProject.HomeScene.RoomScene.RoomSnapScene.FilterMenuObject.FilterMenuTabButtonObject.FilterMenuTabButtonObjectView");
-            if (view == null) return;
+            for (int i = 0; i < node.childCount; i++)
+            {
+                var child = node.GetChild(i);
 
-            var tmp = Il2CppReflection.FindIl2CppField(view.GetIl2CppType(), "_buttonText")?.GetValue(view);
-            SetTmpText(tmp, text);
+                var localizer = NativeRefs.FindComponent(child, LocalizeStringEventTypeName);
+                if (localizer != null)
+                {
+                    try
+                    {
+                        Il2CppReflection.FindIl2CppMethod(localizer.GetIl2CppType(), "set_enabled")
+                            ?.Invoke(localizer, new Il2CppSystem.Object[] { Il2CppReflection.BoxBool(false) });
+                    }
+                    catch { }
+                }
+
+                SilenceLocalization(child);
+            }
         }
 
+        /// <summary>按给定语言码写全部文字（滑条标签 + 标签页按钮）。</summary>
+        private static void RefreshLabels(string language)
+        {
+            foreach (var k in Knobs)
+                SetTmpText(k.LabelTmp, ColorAdjustLabels.Get(k.Key, language));
+
+            SetTmpText(_tabLabel, ColorAdjustLabels.Get(LabelKey.ColorTab, language));
+        }
+
+        /// <summary>
+        /// 写 TextMeshProUGUI 的文字。
+        ///
+        /// set_text 声明在基类 TMP_Text 上，不是 TextMeshProUGUI 自己 —— 这里显式从 TMP_Text
+        /// 上取，不依赖"反射会沿继承链找到继承成员"这条没验证过的假设。
+        ///
+        /// 找不到必须报出来：早先这里写的是 <c>FindIl2CppMethod(...)?.Invoke(...)</c>，
+        /// 找不到就静默跳过，于是"文字一直写不进去"这件事从头到尾没有任何迹象。
+        /// </summary>
         private static void SetTmpText(Il2CppSystem.Object tmp, string text)
         {
             if (tmp == null) return;
+
             try
             {
-                Il2CppReflection.FindIl2CppMethod(tmp.GetIl2CppType(), "set_text")
-                    ?.Invoke(tmp, new Il2CppSystem.Object[] { Il2CppReflection.BoxString(text) });
+                // 走 Il2CppInterop 生成的托管包装：参数是普通 C# string，编组由它负责。
+                // 直接走 il2cpp 反射传手工装箱的字符串实测无效（见 Il2CppReflection.WrapAsManaged）。
+                var wrapper = Il2CppReflection.WrapAsManaged(tmp, TmpTypeName);
+                var textProperty = wrapper?.GetType().GetProperty("text");
+
+                if (textProperty != null && textProperty.CanWrite)
+                {
+                    textProperty.SetValue(wrapper, text);
+
+                    // 回读确认。单看这行像是多余的，但"写进去了吗"这件事早先没有任何迹象：
+                    // 写入走的是静默路径，失败时既不抛异常也不留痕，表现只是标签显示着
+                    // 克隆时从模板带过来的文字 —— 看着完全正常。
+                    if ((textProperty.GetValue(wrapper) as string) != text)
+                        MelonLogger.Warning("[BetterCamera] 文字写入没有生效，ColorAdjust 的标签可能不对");
+
+                    return;
+                }
+
+                MelonLogger.Warning("[BetterCamera] 拿不到 TMP 的 text 属性，ColorAdjust 的文字写不进去");
             }
             catch (Exception e)
             {
@@ -234,156 +318,163 @@ namespace BetterCamera.Features
             }
         }
 
-        /// <summary>按 CanvasGroup 藏起面板 —— 和原生隐藏面板时的做法一致。</summary>
-        private static void HideContainer(GameObject container)
-        {
-            var cg = NativeRefs.FindComponent(FullPath(container.transform), "UnityEngine.CanvasGroup");
-            if (cg == null) return;
-
-            try
-            {
-                var t = cg.GetIl2CppType();
-                Il2CppReflection.FindIl2CppMethod(t, "set_alpha")
-                    ?.Invoke(cg, new Il2CppSystem.Object[] { Il2CppReflection.BoxFloat(0f) });
-                Il2CppReflection.FindIl2CppMethod(t, "set_interactable")
-                    ?.Invoke(cg, new Il2CppSystem.Object[] { Il2CppReflection.BoxBool(false) });
-                Il2CppReflection.FindIl2CppMethod(t, "set_blocksRaycasts")
-                    ?.Invoke(cg, new Il2CppSystem.Object[] { Il2CppReflection.BoxBool(false) });
-            }
-            catch { }
-        }
-
         private static Il2CppSystem.Object FindSliderIn(Transform unit)
         {
             var go = unit.Find(SliderLeafPath);
-            if (go == null) return null;
-            return NativeRefs.FindComponent(FullPath(go), "Il2CppProject.NoArrowMovableSlider");
-        }
-
-        /// <summary>把 Transform 还原成 GameObject.Find 能用的层级路径。</summary>
-        private static string FullPath(Transform t)
-        {
-            var sb = new System.Text.StringBuilder(t.name);
-            var cur = t.parent;
-            while (cur != null) { sb.Insert(0, cur.name + "/"); cur = cur.parent; }
-            return sb.ToString();
+            return go == null ? null : NativeRefs.FindComponent(go, "Il2CppProject.NoArrowMovableSlider");
         }
 
         /// <summary>
-        /// 建一个真正属于本 mod 的标签页。
+        /// 克隆一个原生标签按钮，接到本 mod 的页上。返回它的 View（供 FilterMenuVisibilityHook
+        /// 做选中态配色），失败返回 null。
         ///
-        /// 原生的切换链路是：
-        ///     点标签 → 设 CurrentFilterMenuType → Presenter 观察者触发
-        ///       → View.SetFilterMenuObjectVisible(type)
-        ///         → 查 _filterMenuObjects 字典 → 只显示命中的那个面板
-        ///
-        /// 所以我们把「新枚举值 → 本面板的 CanvasGroup」也塞进那个字典，再克隆一个标签按钮，
-        /// 点击时直接调 SetFilterMenuObjectVisible。于是：
-        ///   - 点我们的标签：走游戏自己的机制显示本面板、隐藏其他
-        ///   - 点原生标签：游戏自己的机制同样会隐藏本面板（我们的条目就在它查的那个字典里）
-        /// 完全不用自己写显示/隐藏逻辑，也不会和游戏打架。
-        ///
-        /// FilterMenuType 只用了 0/1/2，这里占 3。
+        /// 只借外观，不借逻辑：
+        ///   - View 留着 —— 用游戏自己的 SetSelected 上选中/未选中配色
+        ///   - 点击是**追加**到原生 Button 上的（见 TakeButton），不是把游戏的监听清掉
+        ///     再换成我们的。上一版正是栽在 RemoveAllListeners 上：它同时把
+        ///     CommonButtonBehaviour 自己的监听抹了，把按钮的内部状态搞坏
         /// </summary>
-        private static void BuildTab(GameObject container)
+        private static Il2CppSystem.Object BuildTab()
         {
-            var view = NativeRefs.FindComponent(GamePaths.FilterMenuObject,
-                "Il2CppProject.HomeScene.RoomScene.RoomSnapScene.FilterMenuObject.FilterMenuObjectView");
-            if (view == null) { MelonLogger.Warning("[BetterCamera] 拿不到 FilterMenuObjectView，标签未建"); return; }
-
-            var viewType = view.GetIl2CppType();
-            var setVisible = Il2CppReflection.FindIl2CppMethod(viewType, "SetFilterMenuObjectVisible");
-            if (setVisible == null) { MelonLogger.Warning("[BetterCamera] 找不到 SetFilterMenuObjectVisible"); return; }
-
-            // ① 把新条目塞进「标签类型 → CanvasGroup」的字典
-            var dict = Il2CppReflection.FindIl2CppField(viewType, "_filterMenuObjects")?.GetValue(view);
-            if (dict == null) { MelonLogger.Warning("[BetterCamera] 拿不到 _filterMenuObjects"); return; }
-
-            var canvasGroup = NativeRefs.FindComponent(FullPath(container.transform), "UnityEngine.CanvasGroup");
-            if (canvasGroup == null) { MelonLogger.Warning("[BetterCamera] 面板没有 CanvasGroup"); return; }
-
-            var addMethod = FindMethodByParamCount(dict.GetIl2CppType(), "Add", 2);
-            if (addMethod == null) { MelonLogger.Warning("[BetterCamera] 字典上没有 Add(K,V)"); return; }
-
-            try
+            var template = GameObject.Find(GamePaths.NativeTabButtonTemplate);
+            var parent = GameObject.Find(GamePaths.TabButtonsLayout);
+            if (template == null || parent == null)
             {
-                addMethod.Invoke(dict, new Il2CppSystem.Object[]
-                {
-                    Il2CppReflection.BoxInt(MyMenuTypeValue),
-                    canvasGroup,
-                });
+                MelonLogger.Warning("[BetterCamera] 找不到标签按钮模板，ColorAdjust 页没有入口");
+                return null;
             }
-            catch (Exception e)
+
+            var tab = UnityEngine.Object.Instantiate(template, parent.transform);
+            tab.name = GamePaths.NameColorAdjustTabButton;
+
+            SetTabType(tab);
+
+            var view = NativeRefs.FindComponent(tab.transform, TabViewTypeName);
+            if (view == null) { MelonLogger.Warning("[BetterCamera] 克隆体上没有 FilterMenuTabButtonObjectView"); return null; }
+
+            // 标签文字挂在 View._buttonText 上；具体写什么由 RefreshLabels 按当前语言决定
+            _tabLabel = Il2CppReflection.FindIl2CppField(view.GetIl2CppType(), "_buttonText")?.GetValue(view);
+            SilenceLocalization(tab.transform);
+
+            var button = TakeButton(view);
+            if (button == null) { MelonLogger.Warning("[BetterCamera] 拿不到标签按钮的 Button，ColorAdjust 页没有入口"); return null; }
+
+            UnityEventBridge.AddClickListener(button, FilterMenuVisibilityHook.ShowColorAdjust);
+            return view;
+        }
+
+        /// <summary>
+        /// 把面板里那个原生复位按钮接管过来，用来重置本面板的四条参数。
+        ///
+        /// 图标和外观直接沿用原生的（面板是克隆 ExposureAndTemperatureLayout 来的，复位按钮
+        /// 本来就跟着一起被复制了）—— 就是 DutchReset 那种"借图标"的做法，只不过这里连借
+        /// 都不用，现成的。
+        ///
+        /// 注意克隆体同样带着自己的 Zenject 上下文，所以原生那个"重置曝光/色温"的行为可能
+        /// 也还挂着。这一条没有确认过（上下文到底会不会初始化，见 SetTabType 的说明），
+        /// 目前的写法是两边并存 —— 我们的监听是追加的，不挤掉谁。
+        /// </summary>
+        private static void WireResetButton(GameObject container)
+        {
+            for (int i = 0; i < container.transform.childCount; i++)
             {
-                MelonLogger.Error("[BetterCamera] 注册标签页失败（枚举键可能没转换成功）: " + e.Message);
+                var child = container.transform.GetChild(i);
+                if (!child.name.StartsWith(ResetButtonPrefix, StringComparison.Ordinal)) continue;
+
+                var view = NativeRefs.FindComponent(child, ResetViewTypeName);
+                var behaviour = view == null
+                    ? null
+                    : Il2CppReflection.FindIl2CppField(view.GetIl2CppType(), "_button")?.GetValue(view);
+
+                // 和标签按钮一样，Button 的位置不猜：从 CommonButtonBehaviour._button 拿
+                var button = behaviour == null
+                    ? null
+                    : Il2CppReflection.FindIl2CppField(behaviour.GetIl2CppType(), "_button")?.GetValue(behaviour);
+
+                if (button == null)
+                {
+                    MelonLogger.Warning("[BetterCamera] 复位按钮结构不对，ColorAdjust 面板没有重置入口");
+                    return;
+                }
+
+                UnityEventBridge.AddClickListener(button, ResetAll);
+                return;
+            }
+        }
+
+        /// <summary>四条参数全部归零，滑条手柄一起回到中点。</summary>
+        private static void ResetAll()
+        {
+            foreach (var k in Knobs)
+            {
+                if (k.Parameter != null) Apply(k, 0f);
+                // sendCallback = false：值是我们自己写的，别再折回来触发一次 Apply
+                if (k.Slider != null) SliderKit.SetValueQuiet(k.Slider, 0f);
+            }
+        }
+
+        /// <summary>
+        /// 改掉克隆体 Installer 上序列化的 <c>_filterMenuType</c>，让它代表本 mod 的标签页。
+        ///
+        /// 克隆体不是一个空壳：它带着自己的 Zenject 三件套（GameObjectContext + Installer +
+        /// DefaultGameObjectKernel），和原生标签按钮在结构上完全一样。Installer 上序列化的
+        /// _filterMenuType 就是「这个按钮代表哪一页」，随模板一起被复制成了「曝光·色温」——
+        /// 于是它自己的 Presenter 会一直把它按曝光页的选中态来点亮，这也是它看着"卡在
+        /// hover"的由来之一。
+        ///
+        /// 改成 3 之后，如果它的 Zenject 上下文会初始化，点它就走完整原生链路：
+        /// Presenter 写 CurrentFilterMenuType=3 → 游戏自己去显示本页、熄灭另外三个。
+        /// 这是一层保险，不是唯一依赖 —— 上下文到底会不会跑我没有确认过，所以
+        /// 点击监听仍然自己挂着（见 BuildTab），两条路同时成立也不会互相打架。
+        ///
+        /// 必须赶在上下文初始化之前写。克隆体此时还是未激活状态（滤镜菜单关着），
+        /// Awake 没跑过，所以紧接着 Instantiate 写就是安全的；万一不是，_presenter
+        /// 会有值，那时候补写已经晚了，宁可报出来也不要静默失效。
+        /// </summary>
+        private static void SetTabType(GameObject tab)
+        {
+            var installer = NativeRefs.FindComponent(tab.transform, TabInstallerTypeName);
+            if (installer == null)
+            {
+                MelonLogger.Warning("[BetterCamera] 克隆体上没有标签 Installer，ColorAdjust 页的选中态可能不对");
                 return;
             }
 
-            // ② 克隆标签按钮
-            var template = GameObject.Find(GamePaths.NativeTabButtonTemplate);
-            var tabParent = GameObject.Find(GamePaths.TabButtonsLayout);
-            if (template == null || tabParent == null) { MelonLogger.Warning("[BetterCamera] 找不到标签按钮模板"); return; }
+            var type = installer.GetIl2CppType();
+            if (Il2CppReflection.FindIl2CppField(type, "_presenter")?.GetValue(installer) != null)
+            {
+                MelonLogger.Warning("[BetterCamera] 标签 Installer 已经初始化过了，改不到它的 FilterMenuType");
+                return;
+            }
 
-            var tab = UnityEngine.Object.Instantiate(template, tabParent.transform);
-            tab.name = GamePaths.NameColorAdjustTabButton;
-            var tabPath = FullPath(tab.transform);
-            SetTabText(tabPath, TabLabel);
+            var field = Il2CppReflection.FindIl2CppField(type, "_filterMenuType");
+            if (field == null)
+            {
+                MelonLogger.Warning("[BetterCamera] 标签 Installer 上没有 _filterMenuType");
+                return;
+            }
 
-            // 克隆来的按钮带着游戏的 onClick（点下去会切到「曝光/色温」），清掉换成我们的
-            ClearClickListeners(tabPath);
-
-            var button = NativeRefs.FindComponent(tabPath, "UnityEngine.UI.Button");
-            if (button != null)
-                UnityEventBridge.AddClickListener(button, () => ShowTab(setVisible, view));
+            // 装箱的 Int32 写进 4 字节的枚举字段 —— 和 SliderKit.SetDirection 写 m_Direction 同一个路子
+            Il2CppReflection.SetIntField(installer, field, FilterMenuVisibilityHook.ColorAdjustMenuType);
         }
 
-        private static void ShowTab(Il2CppSystem.Reflection.MethodInfo setVisible, Il2CppSystem.Object view)
+        /// <summary>
+        /// 取出标签按钮实际点击的那个 Button。返回 null 表示结构不对，调用方应该放弃建这个标签。
+        ///
+        /// 不按路径猜 Button 挂在哪个子节点 —— 从 CommonButtonBehaviour._button 字段拿，
+        /// 那是游戏自己存的引用。也就是说不去动克隆体上的 CommonButtonBehaviour：
+        /// 它那个会把音效播放器（Zenject 注入，克隆体上永远是 null）拖进来的点击链，
+        /// 因为克隆体没有 Presenter、没人订阅它的 Observable，走不起来。
+        /// 我们的监听是追加到同一个 Button 上，不会把谁挤掉。
+        /// </summary>
+        private static Il2CppSystem.Object TakeButton(Il2CppSystem.Object view)
         {
-            try
-            {
-                setVisible.Invoke(view, new Il2CppSystem.Object[] { Il2CppReflection.BoxInt(MyMenuTypeValue) });
-            }
-            catch (Exception e)
-            {
-                MelonLogger.Error("[BetterCamera] 切到 ColorAdjust 页失败: " + e.Message);
-            }
-        }
+            var behaviour = Il2CppReflection
+                .FindIl2CppField(view.GetIl2CppType(), "_commonButtonBehaviour")?.GetValue(view);
+            if (behaviour == null) return null;
 
-        private static void ClearClickListeners(string buttonGoPath)
-        {
-            try
-            {
-                var button = NativeRefs.FindComponent(buttonGoPath, "UnityEngine.UI.Button");
-                if (button == null) return;
-
-                var evt = Il2CppReflection
-                    .FindIl2CppField(NativeRefs.TypeOf("UnityEngine.UI.Button"), "m_OnClick")
-                    ?.GetValue(button);
-                if (evt == null) return;
-
-                Il2CppReflection.FindIl2CppMethod(evt.GetIl2CppType(), "RemoveAllListeners")?.Invoke(evt, null);
-            }
-            catch (Exception e)
-            {
-                MelonLogger.Warning("[BetterCamera] 清理标签按钮监听失败: " + e.Message);
-            }
-        }
-
-        /// <summary>按名字 + 参数个数找方法 —— 反射里同名重载很常见（如 Add 有 IDictionary 的和泛型的）。</summary>
-        private static Il2CppSystem.Reflection.MethodInfo FindMethodByParamCount(
-            Il2CppSystem.Type type, string name, int paramCount)
-        {
-            var methods = type.GetMethods(
-                Il2CppSystem.Reflection.BindingFlags.Instance |
-                Il2CppSystem.Reflection.BindingFlags.Public |
-                Il2CppSystem.Reflection.BindingFlags.NonPublic);
-            for (int i = 0; i < methods.Length; i++)
-            {
-                if (methods[i].Name != name) continue;
-                try { if (methods[i].GetParameters().Length == paramCount) return methods[i]; }
-                catch { }
-            }
-            return null;
+            return Il2CppReflection
+                .FindIl2CppField(behaviour.GetIl2CppType(), "_button")?.GetValue(behaviour);
         }
 
         private static bool Wire(Knob k)

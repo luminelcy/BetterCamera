@@ -31,6 +31,10 @@ namespace BetterCamera
             // 摘掉原生的 FOV 钳制（只在拍照场景内生效，见 FovClampHook）
             FovClampHook.Apply();
 
+            // 接管滤镜菜单的显隐，让本 mod 的 ColorAdjust 页能跟着标签切换
+            // （必须在 ColorAdjustSliders.Init 之前，它建好面板就要登记过来）
+            FilterMenuVisibilityHook.Apply();
+
             // ⚠️ 顺序是有依赖的：
             //   FXUIHandle / SliderHandle 会 Instantiate 出下面各滑条要去找的 UI 对象，
             //   所以它们必须排在最前面。普通玩家看不到这层依赖，改动时留意。
@@ -58,6 +62,7 @@ namespace BetterCamera
 
             // 离开拍照场景立刻还原原生钳制，把影响面限制在这个场景内
             FovClampHook.Remove();
+            FilterMenuVisibilityHook.Remove();
 
             // 相机对象随场景销毁，清掉缓存引用免得指着已销毁对象
             NativeFovChannel.Reset();
@@ -68,6 +73,7 @@ namespace BetterCamera
             // 兜底：万一场景卸载回调没走到，别把补丁留在这个进程里
             _inTargetScene = false;
             FovClampHook.Remove();
+            FilterMenuVisibilityHook.Remove();
         }
 
         public override void OnUpdate()

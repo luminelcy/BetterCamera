@@ -32,6 +32,7 @@
 		<!-- 游戏访问层：路径常量与组件获取 -->
 		<Compile Include="Game\GamePaths.cs" />
 		<Compile Include="Game\NativeRefs.cs" />
+		<Compile Include="Game\GameLanguage.cs" />
 
 		<!-- 功能层 -->
 		<Compile Include="Features\ZoomSlider.cs" />
@@ -42,11 +43,12 @@
 		<Compile Include="Features\ExitAdjuster.cs" />
 		<Compile Include="Features\FocusSlider.cs" />
 		<Compile Include="Features\ColorAdjustSliders.cs" />
+		<Compile Include="Features\ColorAdjustLabels.cs" />
 
 		<Compile Include="SliderHandle.cs" />
 		<Compile Include="FX\FXUIHandle.cs" />
 		<Compile Include="FovClampHook.cs" />
-		<Compile Include="NativeFovChannel.cs" />
+		<Compile Include="FilterMenuVisibilityHook.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

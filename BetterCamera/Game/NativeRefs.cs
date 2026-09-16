@@ -22,8 +22,17 @@ namespace BetterCamera.Game
     {
         /// <summary>找对象 → 取指定类型的组件 → 转成裸指针包装。任一步失败返回 null。</summary>
         public static Il2CppSystem.Object FindComponent(string path, string componentTypeName)
+            => FindComponent(GameObject.Find(path), componentTypeName);
+
+        /// <summary>
+        /// 已经有了 Transform 就用这个 —— 省掉一次 GameObject.Find，
+        /// 而且不受「未激活对象 Find 不到」的限制。
+        /// </summary>
+        public static Il2CppSystem.Object FindComponent(Transform target, string componentTypeName)
+            => FindComponent(target == null ? null : target.gameObject, componentTypeName);
+
+        private static Il2CppSystem.Object FindComponent(GameObject go, string componentTypeName)
         {
-            var go = GameObject.Find(path);
             if (go == null) return null;
 
             var type = Il2CppReflection.FindType(componentTypeName);

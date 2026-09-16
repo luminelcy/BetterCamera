@@ -62,12 +62,23 @@ namespace BetterCamera.Il2Cpp
         }
 
         public static Il2CppSystem.Reflection.MethodInfo FindIl2CppMethod(Il2CppSystem.Type type, string methodName)
+            => Find(type, methodName, Il2CppSystem.Reflection.BindingFlags.Instance);
+
+        /// <summary>
+        /// 静态方法（含静态属性的 getter/setter，它们在 C# 里就是静态方法）。
+        /// 和 FindIl2CppMethod 分开是因为 BindingFlags 不兼容 —— 合并成一个方法就得猜调用方想要哪种。
+        /// </summary>
+        public static Il2CppSystem.Reflection.MethodInfo FindIl2CppStaticMethod(Il2CppSystem.Type type, string methodName)
+            => Find(type, methodName, Il2CppSystem.Reflection.BindingFlags.Static);
+
+        private static Il2CppSystem.Reflection.MethodInfo Find(
+            Il2CppSystem.Type type, string methodName, Il2CppSystem.Reflection.BindingFlags scope)
         {
             var current = type;
             while (current != null)
             {
                 var methods = current.GetMethods(
-                    Il2CppSystem.Reflection.BindingFlags.Instance |
+                    scope |
                     Il2CppSystem.Reflection.BindingFlags.Public |
                     Il2CppSystem.Reflection.BindingFlags.NonPublic);
                 for (int i = 0; i < methods.Length; i++)
@@ -132,13 +143,30 @@ namespace BetterCamera.Il2Cpp
         }
 
         /// <summary>
-        /// 造一个 il2cpp 侧的字符串。
-        /// 注意 Il2CppSystem.String 的构造函数吃的是 Il2CppStructArray&lt;char&gt;，不是 C# string，
-        /// 所以不能直接 new，得走 il2cpp_string_new。
+        /// 把裸指针包装升级成 Il2CppInterop 生成的托管包装。
+        ///
+        /// 用途：需要往 il2cpp 传托管类型（string 是最典型的）时，走生成代码自己的签名，
+        /// 由 Il2CppInterop 负责参数编组。
+        ///
+        /// 为什么不能手工装箱：曾经用 <c>new Il2CppSystem.String(IL2CPP.il2cpp_string_new(s))</c>
+        /// 造字符串塞进 <c>MethodInfo.Invoke</c>，它**既不抛异常也不生效** —— 静默失败。
+        /// float / bool 参数没这个问题（那些装箱路径是验证过的），只有 string 会。
+        ///
+        /// 失败（类型查不到、构造函数拿不到）返回 null，调用方自行兜底。
         /// </summary>
-        public static Il2CppSystem.String BoxString(string value)
+        public static object WrapAsManaged(Il2CppSystem.Object raw, string managedTypeName)
         {
-            return new Il2CppSystem.String(IL2CPP.il2cpp_string_new(value));
+            if (raw == null) return null;
+
+            var type = FindType(managedTypeName);
+            if (type == null) return null;
+
+            try
+            {
+                var ctor = type.GetConstructor(new[] { typeof(IntPtr) });
+                return ctor?.Invoke(new object[] { raw.Pointer });
+            }
+            catch { return null; }
         }
 
         // ================= 字段读写 =================
