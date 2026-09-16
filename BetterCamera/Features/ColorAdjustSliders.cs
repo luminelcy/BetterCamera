@@ -57,14 +57,6 @@ namespace BetterCamera.Features
 
         private const string LabelNodeName = "CommonLocalizeText";
 
-        /// <summary>
-        /// 注意前缀：Il2CppInterop 会给会和 .NET 撞名的命名空间加 Il2Cpp（Project → Il2CppProject
-        /// 也是同一回事），TMPro 就在这个名单里。写 "TMPro.TextMeshProUGUI" 是查不到的，
-        /// FindType 返回 null，然后一切静默失效。
-        /// </summary>
-        private const string TmpTypeName = "Il2CppTMPro.TextMeshProUGUI";
-        private const string LocalizeStringEventTypeName =
-            "UnityEngine.Localization.Components.LocalizeStringEvent";
         private const string TabViewTypeName =
             "Il2CppProject.HomeScene.RoomScene.RoomSnapScene.FilterMenuObject.FilterMenuTabButtonObject.FilterMenuTabButtonObjectView";
         private const string TabInstallerTypeName =
@@ -210,112 +202,26 @@ namespace BetterCamera.Features
                 Knobs[i].Slider = FindSliderIn(clone);
             }
 
-            // 文字由本 mod 自己写，先把面板里克隆来的本地化事件让开（见 SilenceLocalization）
-            SilenceLocalization(container.transform);
+            // 文字由本 mod 自己写，先把面板里克隆来的本地化事件让开（见 TmpKit）
+            TmpKit.SilenceLocalization(container.transform);
 
             return container;
         }
 
         /// <summary>
         /// 找到滑条单元里的标签 TMP 并记下来，文字统一交给 RefreshLabels 写。
-        ///
-        /// TMP 不在 CommonLocalizeText 它自己身上，而在它的子节点上（实测叫 "Text (TMP)"）。
-        /// 早先直接对 CommonLocalizeText 取 TextMeshProUGUI，拿到的是 null，写入静默失效 ——
-        /// 结果是四条标签一直显示克隆时从模板带过来的文字，全都写着"曝光"。
-        /// 这里改成按组件在子节点里找，不写死子节点名（名字是随版本变的，而这个节点存在的
-        /// 意义就是"里面有个 TMP"）。
+        /// （TMP 在 CommonLocalizeText 的子节点上而不是它自己身上，这个坑见 TmpKit。）
         /// </summary>
         private static Il2CppSystem.Object FindLabel(Transform unit)
-        {
-            var label = unit.Find(LabelNodeName);
-            if (label == null) return null;
-
-            for (int i = 0; i < label.childCount; i++)
-            {
-                var tmp = NativeRefs.FindComponent(label.GetChild(i), TmpTypeName);
-                if (tmp != null) return tmp;
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// 关掉子树里所有的 LocalizeStringEvent。
-        ///
-        /// 本 mod 的面板和标签按钮都是克隆来的，这些节点上的本地化事件指向的是模板
-        /// （曝光/色温面板）的 key —— 它们会把我们写进去的文字按游戏自己的 key 覆盖回去。
-        /// 文字既然由本 mod 自己管，就得先把它们让开。
-        ///
-        /// 只关字符串事件，不动 LocalizeTmpFontEvent —— 字体该跟着语言走，那正是我们要的。
-        /// </summary>
-        private static void SilenceLocalization(Transform node)
-        {
-            for (int i = 0; i < node.childCount; i++)
-            {
-                var child = node.GetChild(i);
-
-                var localizer = NativeRefs.FindComponent(child, LocalizeStringEventTypeName);
-                if (localizer != null)
-                {
-                    try
-                    {
-                        Il2CppReflection.FindIl2CppMethod(localizer.GetIl2CppType(), "set_enabled")
-                            ?.Invoke(localizer, new Il2CppSystem.Object[] { Il2CppReflection.BoxBool(false) });
-                    }
-                    catch { }
-                }
-
-                SilenceLocalization(child);
-            }
-        }
+            => TmpKit.FindText(unit.Find(LabelNodeName));
 
         /// <summary>按给定语言码写全部文字（滑条标签 + 标签页按钮）。</summary>
         private static void RefreshLabels(string language)
         {
             foreach (var k in Knobs)
-                SetTmpText(k.LabelTmp, ColorAdjustLabels.Get(k.Key, language));
+                TmpKit.SetText(k.LabelTmp, ColorAdjustLabels.Get(k.Key, language));
 
-            SetTmpText(_tabLabel, ColorAdjustLabels.Get(LabelKey.ColorTab, language));
-        }
-
-        /// <summary>
-        /// 写 TextMeshProUGUI 的文字。
-        ///
-        /// set_text 声明在基类 TMP_Text 上，不是 TextMeshProUGUI 自己 —— 这里显式从 TMP_Text
-        /// 上取，不依赖"反射会沿继承链找到继承成员"这条没验证过的假设。
-        ///
-        /// 找不到必须报出来：早先这里写的是 <c>FindIl2CppMethod(...)?.Invoke(...)</c>，
-        /// 找不到就静默跳过，于是"文字一直写不进去"这件事从头到尾没有任何迹象。
-        /// </summary>
-        private static void SetTmpText(Il2CppSystem.Object tmp, string text)
-        {
-            if (tmp == null) return;
-
-            try
-            {
-                // 走 Il2CppInterop 生成的托管包装：参数是普通 C# string，编组由它负责。
-                // 直接走 il2cpp 反射传手工装箱的字符串实测无效（见 Il2CppReflection.WrapAsManaged）。
-                var wrapper = Il2CppReflection.WrapAsManaged(tmp, TmpTypeName);
-                var textProperty = wrapper?.GetType().GetProperty("text");
-
-                if (textProperty != null && textProperty.CanWrite)
-                {
-                    textProperty.SetValue(wrapper, text);
-
-                    // 回读确认。单看这行像是多余的，但"写进去了吗"这件事早先没有任何迹象：
-                    // 写入走的是静默路径，失败时既不抛异常也不留痕，表现只是标签显示着
-                    // 克隆时从模板带过来的文字 —— 看着完全正常。
-                    if ((textProperty.GetValue(wrapper) as string) != text)
-                        MelonLogger.Warning("[BetterCamera] 文字写入没有生效，ColorAdjust 的标签可能不对");
-
-                    return;
-                }
-
-                MelonLogger.Warning("[BetterCamera] 拿不到 TMP 的 text 属性，ColorAdjust 的文字写不进去");
-            }
-            catch (Exception e)
-            {
-                MelonLogger.Warning("[BetterCamera] 设置文字失败: " + e.Message);
-            }
+            TmpKit.SetText(_tabLabel, ColorAdjustLabels.Get(LabelKey.ColorTab, language));
         }
 
         private static Il2CppSystem.Object FindSliderIn(Transform unit)
@@ -354,7 +260,7 @@ namespace BetterCamera.Features
 
             // 标签文字挂在 View._buttonText 上；具体写什么由 RefreshLabels 按当前语言决定
             _tabLabel = Il2CppReflection.FindIl2CppField(view.GetIl2CppType(), "_buttonText")?.GetValue(view);
-            SilenceLocalization(tab.transform);
+            TmpKit.SilenceLocalization(tab.transform);
 
             var button = TakeButton(view);
             if (button == null) { MelonLogger.Warning("[BetterCamera] 拿不到标签按钮的 Button，ColorAdjust 页没有入口"); return null; }

@@ -35,6 +35,10 @@ namespace BetterCamera
             // （必须在 ColorAdjustSliders.Init 之前，它建好面板就要登记过来）
             FilterMenuVisibilityHook.Apply();
 
+            // 把自定义拍照比例接到出片链路上。必须在 CaptureSizePresets.Init 之前 ——
+            // 补丁要先就位，玩家点新选项时才有东西接住
+            CaptureSizeRatioHook.Apply();
+
             // ⚠️ 顺序是有依赖的：
             //   FXUIHandle / SliderHandle 会 Instantiate 出下面各滑条要去找的 UI 对象，
             //   所以它们必须排在最前面。普通玩家看不到这层依赖，改动时留意。
@@ -50,6 +54,7 @@ namespace BetterCamera
             ExitAdjuster.Init();
             FocusSlider.Init();
             ColorAdjustSliders.Init();
+            CaptureSizePresets.Init();
         }
 
         public override void OnSceneWasUnloaded(int buildIndex, string sceneName)
@@ -63,6 +68,10 @@ namespace BetterCamera
             // 离开拍照场景立刻还原原生钳制，把影响面限制在这个场景内
             FovClampHook.Remove();
             FilterMenuVisibilityHook.Remove();
+            CaptureSizeRatioHook.Remove();
+
+            // 缓存里是随场景销毁的对象，留着就是悬垂指针
+            CaptureSizePresets.Reset();
 
             // 相机对象随场景销毁，清掉缓存引用免得指着已销毁对象
             NativeFovChannel.Reset();
@@ -74,6 +83,7 @@ namespace BetterCamera
             _inTargetScene = false;
             FovClampHook.Remove();
             FilterMenuVisibilityHook.Remove();
+            CaptureSizeRatioHook.Remove();
         }
 
         public override void OnUpdate()

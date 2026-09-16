@@ -121,6 +121,20 @@ namespace BetterCamera.Game
         public const string RoomSnapBackButton =
             Canvas + "/Header/RoomSnapSceneBackButtonObject/CommonBackButtonObject/CommonBackButton";
 
+        // ================= 拍照尺寸菜单 =================
+        //
+        // 这个菜单只有 3 个原生选项（Default 不裁切 / Portrait 9:16 / HoloModelink），
+        // 本 mod 在 Body 下再克隆出几个固定比例。
+
+        public const string CaptureSizeMenu = Canvas + "/Header/P_CaptureSizeMenuObject";
+        public const string CaptureSizeMenuBody = CaptureSizeMenu + "/Body";
+
+        /// <summary>克隆源。它本身是 9:16，但只有外观被复用 —— 比例由本 mod 自己定。</summary>
+        public const string CaptureSizeOptionTemplate = CaptureSizeMenuBody + "/CaptureSizeOption_Portrait";
+
+        /// <summary>取景框。点本 mod 的选项时要把它的比例也更新掉，否则框和成片对不上。</summary>
+        public const string CaptureSizeCropObject = "SceneContext/CommonCanvas/P_CaptureSizeCropObject";
+
         // ================= 后处理 Volume =================
 
         public const string BaseVolume = "SceneContext/System/P_RoomSnapPostProcessObject/BaseVolume";
