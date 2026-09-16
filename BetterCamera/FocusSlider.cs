@@ -21,6 +21,10 @@ namespace BetterCamera
         private static Il2CppSystem.Reflection.FieldInfo cachedMMinValueField;
         private static Il2CppSystem.Reflection.MethodInfo cachedSetMethod;
 
+        // 手柄同步的基准值。原生对焦（FocusClickedObjectController.SwitchFocus / 自动对焦）
+        // 会直接改 DepthOfField 的焦点距离，绕过了本滑条，所以要每帧读回来对齐手柄。
+        private static float _lastSyncedFocus = float.NaN;
+
         public static void Init(MelonLogger.Instance logger)
         {
             CacheDOFFields();
@@ -56,6 +60,12 @@ namespace BetterCamera
 
         private static void SetFocusDistance(float value)
         {
+            ApplyFocusDistance(value);
+            _lastSyncedFocus = value;   // 自己写的值记下来，免得下一帧同步又推回去
+        }
+
+        private static void ApplyFocusDistance(float value)
+        {
             if (cachedDOFInstance == null || cachedFocusDistanceField == null) return;
 
             var focusDistanceObj = cachedFocusDistanceField.GetValue(cachedDOFInstance);
@@ -63,6 +73,62 @@ namespace BetterCamera
 
             if (cachedValueField != null)
                 SetFloatField(focusDistanceObj, cachedValueField, value);
+        }
+
+        /// <summary>读当前实际生效的焦点距离（原生对焦改的就是这个值）。取不到返回 NaN。</summary>
+        private static float GetFocusDistance()
+        {
+            if (cachedDOFInstance == null || cachedFocusDistanceField == null || cachedValueField == null)
+                return float.NaN;
+
+            var focusDistanceObj = cachedFocusDistanceField.GetValue(cachedDOFInstance);
+            if (focusDistanceObj == null) return float.NaN;
+
+            var raw = cachedValueField.GetValue(focusDistanceObj);
+            if (raw == null) return float.NaN;
+
+            return UnboxFloat(raw);
+        }
+
+        /// <summary>
+        /// 每帧把实际焦点距离同步到滑条手柄。
+        ///
+        /// 为什么需要：原生的对焦模式按钮走 FocusClickedObjectController.SwitchFocus()
+        /// （还有自动对焦 CalculateFocusDistance()），它们直接改 DepthOfField 的
+        /// 焦点距离，本滑条完全不知情。不刷新手柄的话，画面已经变焦而手柄还停在原处，
+        /// 用户会以为滑条坏了。
+        /// </summary>
+        public static void SyncFromNative()
+        {
+            if (cachedSliderObj == null || cachedSetMethod == null) return;
+
+            float cur = GetFocusDistance();
+            if (float.IsNaN(cur)) return;
+
+            if (float.IsNaN(_lastSyncedFocus))
+            {
+                _lastSyncedFocus = cur;
+                SetSliderQuiet(cur);
+                return;
+            }
+
+            if (Mathf.Abs(cur - _lastSyncedFocus) < 0.001f) return;
+
+            _lastSyncedFocus = cur;
+            SetSliderQuiet(cur);
+        }
+
+        /// <summary>写滑条值但不触发回调（sendCallback=false），避免和设备回环。</summary>
+        private static void SetSliderQuiet(float value)
+        {
+            if (cachedSliderObj == null || cachedSetMethod == null) return;
+            try
+            {
+                var boxedVal = BoxFloat(value);
+                var boxedFalse = BoxBool(false);
+                cachedSetMethod.Invoke(cachedSliderObj, new Il2CppSystem.Object[] { boxedVal, boxedFalse });
+            }
+            catch { }
         }
 
         private static void CacheDOFFields()
@@ -209,6 +275,12 @@ namespace BetterCamera
             var boxedPtr = IL2CPP.il2cpp_value_box(boolClass, ptr);
             Marshal.FreeHGlobal(ptr);
             return new Il2CppSystem.Object(boxedPtr);
+        }
+
+        private static float UnboxFloat(Il2CppSystem.Object obj)
+        {
+            var unboxPtr = IL2CPP.il2cpp_object_unbox(obj.Pointer);
+            return Marshal.PtrToStructure<float>(unboxPtr);
         }
 
         private static Il2CppSystem.Reflection.FieldInfo FindIl2CppField(Il2CppSystem.Type type, string fieldName)

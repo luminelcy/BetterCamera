@@ -51,9 +51,12 @@ namespace BetterCamera
 
         public override void OnUpdate()
         {
-            // 每帧把原生 FOV 同步到滑条手柄上。
-            // 这是本次改造的核心 —— 滚轮/键盘改 FOV 时手柄要跟着走。
+            // 每帧把原生改动同步到对应的滑条手柄上。
+            // 缩放：滚轮/键盘改 FOV 时手柄要跟着走。
             ZoomSlider.SyncFromNative();
+
+            // 对焦：原生对焦模式按钮 / 自动对焦改焦点距离时手柄要跟着走。
+            FocusSlider.SyncFromNative();
         }
     }
 }
