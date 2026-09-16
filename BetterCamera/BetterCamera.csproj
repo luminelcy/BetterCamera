@@ -21,10 +21,23 @@
 
 	<ItemGroup>
 		<Compile Include="Core.cs" />
+
+		<!-- 基础设施：和 il2cpp 打交道，不含业务 -->
+		<Compile Include="Il2Cpp\Il2CppReflection.cs" />
+		<Compile Include="Il2Cpp\UnityEventBridge.cs" />
+		<Compile Include="Il2Cpp\SliderKit.cs" />
+		<Compile Include="NativeFovChannel.cs" />
+
+		<!-- 游戏访问层：路径常量与组件获取 -->
+		<Compile Include="Game\GamePaths.cs" />
+		<Compile Include="Game\NativeRefs.cs" />
+
+		<!-- 功能层 -->
+		<Compile Include="Features\ZoomSlider.cs" />
+
 		<Compile Include="SliderHandle.cs" />
 		<Compile Include="DutchReset.cs" />
 		<Compile Include="DutchSlider.cs" />
-		<Compile Include="ZoomSlider.cs" />
 		<Compile Include="FocusSlider.cs" />
 		<Compile Include="QuitHandle.cs" />
 		<Compile Include="CameraInitHandle.cs" />
