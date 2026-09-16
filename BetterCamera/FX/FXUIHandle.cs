@@ -1,5 +1,6 @@
 using MelonLoader;
 using UnityEngine;
+using BetterCamera.Game;
 using UnityEngine.UI;
 
 namespace BetterCamera.FX
@@ -7,19 +8,19 @@ namespace BetterCamera.FX
     public static class FXUIHandle
     {
         private const string SourceSliderPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_FilterMenuObject/Body/ControlsLayout/ExposureAndTemperatureLayout/SlidersLayout/ExposureSliderLayout/SliderLayout";
+            GamePaths.NativeFxExposureSlider;
 
         private const string BaseSliderTargetPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_FilterMenuObject/Body/ControlsLayout/FiltersListLayout";
+            GamePaths.FiltersListLayout;
 
         private const string EffectSliderTargetPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_FilterMenuObject/Body/ControlsLayout/SpecialEffectsListLayout";
+            GamePaths.SpecialEffectsListLayout;
 
         private const string SpecialEffectsListObjectPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_FilterMenuObject/Body/ControlsLayout/SpecialEffectsListLayout/P_EffectsListObject/ScrollRect/Viewport";
+            GamePaths.SpecialEffectsListViewport;
 
         private const string FiltersListObjectPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_FilterMenuObject/Body/ControlsLayout/FiltersListLayout/P_FiltersListObject/ScrollRect/Viewport";
+            GamePaths.FiltersListViewport;
 
         public static void Init(MelonLogger.Instance logger)
         {
@@ -36,7 +37,7 @@ namespace BetterCamera.FX
             if (baseTarget != null)
             {
                 var baseSlider = UnityEngine.Object.Instantiate(sourceSlider, baseTarget.transform);
-                baseSlider.name = "BaseSlider";
+                baseSlider.name = GamePaths.NameBcFxBaseSlider;
                 baseSlider.SetActive(true);
                 baseSlider.transform.SetAsLastSibling();
                 baseSlider.transform.localPosition = new Vector3(0f, 126f, 0f);
@@ -47,7 +48,7 @@ namespace BetterCamera.FX
             if (effectTarget != null)
             {
                 var effectSlider = UnityEngine.Object.Instantiate(sourceSlider, effectTarget.transform);
-                effectSlider.name = "EffectSlider";
+                effectSlider.name = GamePaths.NameBcFxEffectSlider;
                 effectSlider.SetActive(true);
                 effectSlider.transform.SetAsLastSibling();
                 effectSlider.transform.localPosition = new Vector3(0f, 126f, 0f);

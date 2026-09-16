@@ -26,6 +26,7 @@
 		<Compile Include="Il2Cpp\Il2CppReflection.cs" />
 		<Compile Include="Il2Cpp\UnityEventBridge.cs" />
 		<Compile Include="Il2Cpp\SliderKit.cs" />
+		<Compile Include="Il2Cpp\LensKit.cs" />
 		<Compile Include="NativeFovChannel.cs" />
 
 		<!-- 游戏访问层：路径常量与组件获取 -->
@@ -34,16 +35,15 @@
 
 		<!-- 功能层 -->
 		<Compile Include="Features\ZoomSlider.cs" />
+		<Compile Include="Features\NearClipAdjuster.cs" />
+		<Compile Include="Features\FxSlider.cs" />
+		<Compile Include="Features\DutchSlider.cs" />
+		<Compile Include="Features\DutchReset.cs" />
+		<Compile Include="Features\ExitAdjuster.cs" />
+		<Compile Include="Features\FocusSlider.cs" />
 
 		<Compile Include="SliderHandle.cs" />
-		<Compile Include="DutchReset.cs" />
-		<Compile Include="DutchSlider.cs" />
-		<Compile Include="FocusSlider.cs" />
-		<Compile Include="QuitHandle.cs" />
-		<Compile Include="CameraInitHandle.cs" />
 		<Compile Include="FX\FXUIHandle.cs" />
-		<Compile Include="FX\BaseSlider.cs" />
-		<Compile Include="FX\EffectSlider.cs" />
 		<Compile Include="FovClampHook.cs" />
 		<Compile Include="NativeFovChannel.cs" />
 	</ItemGroup>

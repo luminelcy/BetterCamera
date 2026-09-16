@@ -31,16 +31,20 @@ namespace BetterCamera
             // 摘掉原生的 FOV 钳制（只在拍照场景内生效，见 FovClampHook）
             FovClampHook.Apply();
 
-            CameraInitHandle.Init(LoggerInstance);
+            // ⚠️ 顺序是有依赖的：
+            //   FXUIHandle / SliderHandle 会 Instantiate 出下面各滑条要去找的 UI 对象，
+            //   所以它们必须排在最前面。普通玩家看不到这层依赖，改动时留意。
             FX.FXUIHandle.Init(LoggerInstance);
-            FX.BaseSlider.Init(LoggerInstance);
-            FX.EffectSlider.Init(LoggerInstance);
             SliderHandle.Init(LoggerInstance);
+
             ZoomSlider.Init();
-            DutchReset.Init(LoggerInstance);
-            DutchSlider.Init(LoggerInstance);
-            FocusSlider.Init(LoggerInstance);
-            QuitHandle.Init(LoggerInstance);
+            FxSlider.Init();
+            DutchSlider.Init();
+            DutchReset.Init();
+
+            NearClipAdjuster.Init();
+            ExitAdjuster.Init();
+            FocusSlider.Init();
         }
 
         public override void OnSceneWasUnloaded(int buildIndex, string sceneName)
@@ -70,11 +74,12 @@ namespace BetterCamera
             if (!_inTargetScene)
                 return;
 
-            // 缩放：滚轮/键盘改 FOV 时手柄要跟着走
-            ZoomSlider.SyncFromNative();
-
-            // 对焦：原生对焦模式按钮 / 自动对焦改焦点距离时手柄要跟着走
-            FocusSlider.SyncFromNative();
+            // 各自把原生侧的改动同步到滑条手柄。
+            // 共同点：这些值都可能被 mod 之外的东西改（滚轮、键盘、原生按钮、
+            // 退出重置），手柄不跟上用户就会以为滑条坏了。
+            ZoomSlider.SyncFromNative();    // 滚轮 / 键盘改 FOV
+            DutchSlider.SyncFromNative();   // 重置按钮改 Dutch
+            FocusSlider.SyncFromNative();   // 原生对焦模式 / 自动对焦
         }
     }
 }

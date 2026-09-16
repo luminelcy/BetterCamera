@@ -19,6 +19,15 @@ namespace BetterCamera.Game
         public const string CameraObject = "SceneContext/P_RoomCameraObject";
         public const string DefaultVirtualCamera = CameraObject + "/VirtualCameras/DefaultVirtualCamera";
 
+        /// <summary>
+        /// 挂着 FocusClickedObjectController 的对象。那个组件持有 DepthOfField 的引用，
+        /// 是 mod 改焦点距离的唯一入口。
+        ///
+        /// 两个候选路径：游戏在不同版本里换过一次位置，先试主路径再退回备选。
+        /// </summary>
+        public const string FocusController = "SceneContext/Volume";
+        public const string FocusControllerFallback = "SceneContext/Systems/FocusCameraSwitcher";
+
         // ================= 原生 UI：克隆源 =================
         // NativeUiFactory 从这里 Instantiate 出本 mod 自己的 UI
 
@@ -55,12 +64,27 @@ namespace BetterCamera.Game
         // 同理，NativeUiFactory 里那些 localPosition / localEulerAngles / localScale /
         // 图标显隐也都是作者摆好的 UI 结果，重构时一律原样保留。
 
-        public const string BcZoomHandle = BodyRight + "/P_BetterCameraHandleObject0";       // ZoomSlider
-        public const string BcFocusHandle = BodyRight + "/P_BetterCameraHandleObject1";      // FocusSlider；DutchSlider 会改它的 m_Direction
-        public const string BcDutchHandle = FooterCenter + "/P_BetterCameraHandleObject2";   // DutchSlider
-        public const string BcShowRoomStates = FooterCenter + "/P_BetterCameraShowRoomStates"; // DutchReset
-        public const string BcFxBaseSlider = FiltersListLayout + "/BaseSlider";              // FxSlider（滤镜）
-        public const string BcFxEffectSlider = SpecialEffectsListLayout + "/EffectSlider";   // FxSlider（特效）
+        // 克隆体的名字单独列出来：NativeUiFactory 用这些名字给 Instantiate 出来的对象命名，
+        // 而消费者用下面的路径去找。两者由同一个常量拼出，改名就不可能只改一半。
+        public const string NameBcZoomHandle = "P_BetterCameraHandleObject0";
+        public const string NameBcFocusHandle = "P_BetterCameraHandleObject1";
+        public const string NameBcDutchHandle = "P_BetterCameraHandleObject2";
+        public const string NameBcShowRoomStates = "P_BetterCameraShowRoomStates";
+        public const string NameBcFxBaseSlider = "BaseSlider";
+        public const string NameBcFxEffectSlider = "EffectSlider";
+
+        // 下面这三个克隆体没有任何 C# 逻辑引用，但作者把它们当 UI 元素在用。
+        // 名字同样是契约 —— 不要删、不要改名。
+        public const string NameBcSwitchModeButton = "P_BetterCameraSwitchModeButton";
+        public const string NameBcFocusModeButton1 = "P_SwitchCameraFocusModeButtonObject1";
+        public const string NameBcCommonButton = "P_BetterCameraCommonButton";
+
+        public const string BcZoomHandle = BodyRight + "/" + NameBcZoomHandle;       // ZoomSlider
+        public const string BcFocusHandle = BodyRight + "/" + NameBcFocusHandle;     // FocusSlider；DutchSlider 会改它的 m_Direction
+        public const string BcDutchHandle = FooterCenter + "/" + NameBcDutchHandle;  // DutchSlider
+        public const string BcShowRoomStates = FooterCenter + "/" + NameBcShowRoomStates; // DutchReset
+        public const string BcFxBaseSlider = FiltersListLayout + "/" + NameBcFxBaseSlider;       // FxSlider（滤镜）
+        public const string BcFxEffectSlider = SpecialEffectsListLayout + "/" + NameBcFxEffectSlider; // FxSlider（特效）
 
         // 滑条/按钮在克隆体里的子路径
         public const string SliderNode = "/Slider/Slider";

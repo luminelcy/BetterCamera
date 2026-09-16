@@ -1,27 +1,28 @@
 using MelonLoader;
 using UnityEngine;
+using BetterCamera.Game;
 
 namespace BetterCamera
 {
     public static class SliderHandle
     {
         private const string ZoomHandlePath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Body/Right/P_ZoomHandleObject";
+            GamePaths.NativeZoomHandle;
 
         private const string FooterCenterPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Footer/Center";
+            GamePaths.FooterCenter;
 
         private const string SwitchCameraPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Header/RightIconBackground/P_SwitchCameraFocusModeButtonObject";
+            GamePaths.NativeSwitchCameraButton;
 
         private const string BodyRightPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Body/Right";
+            GamePaths.BodyRight;
 
         private const string ShowRoomStatesPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Header/P_RoomTopRightMenuObject/Adjust/ViewGroup/P_ShowRoomStatesButtonObject";
+            GamePaths.NativeShowRoomStatesButton;
 
         private const string CommonButtonPath =
-            "SceneContext/CommonCanvas/UIPartsGroup/Footer/Right/PoseAndRotateUI/P_SwitchRotateAvatarButtonObject/CommonButton";
+            GamePaths.NativeCommonButton;
 
         public static void Init(MelonLogger.Instance logger)
         {
@@ -33,10 +34,10 @@ namespace BetterCamera
             // }
 
             var clone0 = UnityEngine.Object.Instantiate(original, original.transform.parent);
-            clone0.name = "P_BetterCameraHandleObject0";
+            clone0.name = GamePaths.NameBcZoomHandle;
 
             var clone1 = UnityEngine.Object.Instantiate(original, original.transform.parent);
-            clone1.name = "P_BetterCameraHandleObject1";
+            clone1.name = GamePaths.NameBcFocusHandle;
             var rt1 = clone1.GetComponent<RectTransform>();
             rt1.anchoredPosition = new Vector2(rt1.anchoredPosition.x - 65f, rt1.anchoredPosition.y);
 
@@ -53,7 +54,7 @@ namespace BetterCamera
             }
 
             var clone2 = UnityEngine.Object.Instantiate(original, footerCenter.transform);
-            clone2.name = "P_BetterCameraHandleObject2";
+            clone2.name = GamePaths.NameBcDutchHandle;
             clone2.transform.localPosition = new Vector3(0f, 80f, 0f);
             clone2.transform.localEulerAngles = new Vector3(0f, 0f, 270f);
 
@@ -78,13 +79,13 @@ namespace BetterCamera
                 if (bodyRight != null)
                 {
                     var cloneSwitch = UnityEngine.Object.Instantiate(switchCamOriginal, bodyRight.transform);
-                    cloneSwitch.name = "P_BetterCameraSwitchModeButton";
+                    cloneSwitch.name = GamePaths.NameBcSwitchModeButton;
                     cloneSwitch.transform.localPosition = new Vector3(-220f, 205f, 0f);
                     var iconZoomIn = cloneSwitch.transform.Find("CircleIconButton/IconZoomIn");
                     if (iconZoomIn != null) UnityEngine.Object.Destroy(iconZoomIn.gameObject);
 
                     var cloneSwitch1 = UnityEngine.Object.Instantiate(switchCamOriginal, bodyRight.transform);
-                    cloneSwitch1.name = "P_SwitchCameraFocusModeButtonObject1";
+                    cloneSwitch1.name = GamePaths.NameBcFocusModeButton1;
                     cloneSwitch1.transform.localPosition = new Vector3(-220f, -201f, 0f);
                     var iconZoomOut = cloneSwitch1.transform.Find("CircleIconButton/IconZoomOut");
                     if (iconZoomOut != null) UnityEngine.Object.Destroy(iconZoomOut.gameObject);
@@ -103,7 +104,7 @@ namespace BetterCamera
                 if (footerCenter2 != null)
                 {
                     var cloneShowRoom = UnityEngine.Object.Instantiate(showRoomStatesOriginal, footerCenter2.transform);
-                    cloneShowRoom.name = "P_BetterCameraShowRoomStates";
+                    cloneShowRoom.name = GamePaths.NameBcShowRoomStates;
                     cloneShowRoom.SetActive(true);
                     cloneShowRoom.transform.localPosition = new Vector3(0f, 150f, 0f);
                     cloneShowRoom.transform.localScale = new Vector3(0.9f, 0.9f, 0.9f);
@@ -120,7 +121,7 @@ namespace BetterCamera
                 if (footerCenter3 != null)
                 {
                     var cloneCommonBtn = UnityEngine.Object.Instantiate(commonButtonOriginal, footerCenter3.transform);
-                    cloneCommonBtn.name = "P_BetterCameraCommonButton";
+                    cloneCommonBtn.name = GamePaths.NameBcCommonButton;
                     cloneCommonBtn.transform.localPosition = new Vector3(0f, 150f, 0f);
                     cloneCommonBtn.transform.localScale = new Vector3(2f, 2f, 2f);
                     cloneCommonBtn.transform.localEulerAngles = new Vector3(0f, 180f, 90f);
