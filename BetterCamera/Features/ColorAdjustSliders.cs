@@ -31,6 +31,7 @@ namespace BetterCamera.Features
         {
             public string CloneName;    // 克隆体名字（UI 契约）
             public string Param;        // ColorAdjustments 上的字段名
+            public string Label;        // 显示给玩家的名字
             public float Min, Max;
             public Il2CppSystem.Object Slider;
             public Il2CppSystem.Object Parameter;
@@ -38,11 +39,16 @@ namespace BetterCamera.Features
 
         private static readonly Knob[] Knobs =
         {
-            new Knob { CloneName = "P_BCColorAdjustHue",        Param = "hueShift",     Min = -180f, Max = 180f },
-            new Knob { CloneName = "P_BCColorAdjustSaturation", Param = "saturation",   Min = -100f, Max = 100f },
-            new Knob { CloneName = "P_BCColorAdjustContrast",   Param = "contrast",     Min = -100f, Max = 100f },
-            new Knob { CloneName = "P_BCColorAdjustExposure",   Param = "postExposure", Min = -3f,   Max = 3f   },
+            new Knob { CloneName = "P_BCColorAdjustHue",        Param = "hueShift",     Label = "Hue",        Min = -180f, Max = 180f },
+            new Knob { CloneName = "P_BCColorAdjustSaturation", Param = "saturation",   Label = "Saturation", Min = -100f, Max = 100f },
+            new Knob { CloneName = "P_BCColorAdjustContrast",   Param = "contrast",     Label = "Contrast",   Min = -100f, Max = 100f },
+            new Knob { CloneName = "P_BCColorAdjustExposure",   Param = "postExposure", Label = "Exposure",   Min = -3f,   Max = 3f   },
         };
+
+        private const string LabelNodeName = "CommonLocalizeText";
+        private const string TmpTypeName = "TMPro.TextMeshProUGUI";
+        /// <summary>标签页按钮上的文字。</summary>
+        private const string TabLabel = "Color";
 
         private static Il2CppSystem.Type _paramType;
 
@@ -56,7 +62,18 @@ namespace BetterCamera.Features
             var container = BuildUi();
             if (container == null) return;
 
-            BuildTab(container);
+            // 标签按钮暂时停用。
+            //
+            // 症状：点一次就卡死游戏，且面板没被正常显示/隐藏。
+            // 原因：往 _filterMenuObjects 字典注册时，键用的是装箱的 Int32，
+            // 而字典的键类型是枚举 FilterMenuType —— 装箱类型对不上，
+            // Add 走的很可能是 IDictionary.Add(object,object) 那个非泛型重载，
+            // 于是存进去的键类型错误，游戏按枚举查不到，内部状态被打乱。
+            //
+            // 要修得先把键装箱成真正的 FilterMenuType（il2cpp 侧按枚举类装箱），
+            // 并且确认拿到的是泛型 Add 而不是非泛型那个。
+            // 在此之前只保留面板（默认隐藏），不再创建标签按钮。
+            // BuildTab(container);
 
             // 容器建好了但拿不到滑条的，单独跳过；能接的先接上
             int wired = 0;
@@ -132,6 +149,12 @@ namespace BetterCamera.Features
             var container = UnityEngine.Object.Instantiate(template, parent.transform);
             container.name = GamePaths.NameColorAdjustLayout;
 
+            // 默认隐藏。
+            // 原生面板的显隐由 FilterMenuObjectView.SetFilterMenuObjectVisible 通过 CanvasGroup 控制，
+            // 而我们的面板不在它的显隐体系内（见 BuildTab 的说明），不主动藏起来就会一直叠在
+            // 当前标签的上面。
+            HideContainer(container);
+
             // 克隆出来的重置按钮会带着游戏的 onClick，点下去会去重置曝光/色温。
             // 跟本面板无关，去掉免得误导。
             for (int i = container.transform.childCount - 1; i >= 0; i--)
@@ -158,16 +181,76 @@ namespace BetterCamera.Features
             }
 
             unit.name = Knobs[0].CloneName;
+            SetLabelText(unit, Knobs[0].Label);
             Knobs[0].Slider = FindSliderIn(unit);
 
             for (int i = 1; i < Knobs.Length; i++)
             {
                 var clone = UnityEngine.Object.Instantiate(unit, slidersLayout);
                 clone.name = Knobs[i].CloneName;
+                SetLabelText(clone, Knobs[i].Label);
                 Knobs[i].Slider = FindSliderIn(clone);
             }
 
             return container;
+        }
+
+        /// <summary>
+        /// 直接改 TextMeshProUGUI 的文字。
+        ///
+        /// 为什么不走游戏自己的本地化：CommonLocalizeTextBehaviour 用的是
+        /// LocalizeTextKey 枚举，mod 加不了新 key。直接写 TMP 省事，
+        /// 代价是不随语言切换 —— 这几个名字用英文就够。
+        /// </summary>
+        private static void SetLabelText(Transform unit, string text)
+        {
+            var label = unit.Find(LabelNodeName);
+            if (label == null) return;
+            SetTmpText(NativeRefs.FindComponent(FullPath(label), TmpTypeName), text);
+        }
+
+        /// <summary>标签按钮的文字挂在 FilterMenuTabButtonObjectView._buttonText 上。</summary>
+        private static void SetTabText(string tabPath, string text)
+        {
+            var view = NativeRefs.FindComponent(tabPath,
+                "Il2CppProject.HomeScene.RoomScene.RoomSnapScene.FilterMenuObject.FilterMenuTabButtonObject.FilterMenuTabButtonObjectView");
+            if (view == null) return;
+
+            var tmp = Il2CppReflection.FindIl2CppField(view.GetIl2CppType(), "_buttonText")?.GetValue(view);
+            SetTmpText(tmp, text);
+        }
+
+        private static void SetTmpText(Il2CppSystem.Object tmp, string text)
+        {
+            if (tmp == null) return;
+            try
+            {
+                Il2CppReflection.FindIl2CppMethod(tmp.GetIl2CppType(), "set_text")
+                    ?.Invoke(tmp, new Il2CppSystem.Object[] { Il2CppReflection.BoxString(text) });
+            }
+            catch (Exception e)
+            {
+                MelonLogger.Warning("[BetterCamera] 设置文字失败: " + e.Message);
+            }
+        }
+
+        /// <summary>按 CanvasGroup 藏起面板 —— 和原生隐藏面板时的做法一致。</summary>
+        private static void HideContainer(GameObject container)
+        {
+            var cg = NativeRefs.FindComponent(FullPath(container.transform), "UnityEngine.CanvasGroup");
+            if (cg == null) return;
+
+            try
+            {
+                var t = cg.GetIl2CppType();
+                Il2CppReflection.FindIl2CppMethod(t, "set_alpha")
+                    ?.Invoke(cg, new Il2CppSystem.Object[] { Il2CppReflection.BoxFloat(0f) });
+                Il2CppReflection.FindIl2CppMethod(t, "set_interactable")
+                    ?.Invoke(cg, new Il2CppSystem.Object[] { Il2CppReflection.BoxBool(false) });
+                Il2CppReflection.FindIl2CppMethod(t, "set_blocksRaycasts")
+                    ?.Invoke(cg, new Il2CppSystem.Object[] { Il2CppReflection.BoxBool(false) });
+            }
+            catch { }
         }
 
         private static Il2CppSystem.Object FindSliderIn(Transform unit)
@@ -244,6 +327,7 @@ namespace BetterCamera.Features
             var tab = UnityEngine.Object.Instantiate(template, tabParent.transform);
             tab.name = GamePaths.NameColorAdjustTabButton;
             var tabPath = FullPath(tab.transform);
+            SetTabText(tabPath, TabLabel);
 
             // 克隆来的按钮带着游戏的 onClick（点下去会切到「曝光/色温」），清掉换成我们的
             ClearClickListeners(tabPath);

@@ -131,6 +131,16 @@ namespace BetterCamera.Il2Cpp
             return Marshal.PtrToStructure<int>(unboxPtr);
         }
 
+        /// <summary>
+        /// 造一个 il2cpp 侧的字符串。
+        /// 注意 Il2CppSystem.String 的构造函数吃的是 Il2CppStructArray&lt;char&gt;，不是 C# string，
+        /// 所以不能直接 new，得走 il2cpp_string_new。
+        /// </summary>
+        public static Il2CppSystem.String BoxString(string value)
+        {
+            return new Il2CppSystem.String(IL2CPP.il2cpp_string_new(value));
+        }
+
         // ================= 字段读写 =================
 
         public static void SetFloatField(Il2CppSystem.Object target, Il2CppSystem.Reflection.FieldInfo field, float value)
