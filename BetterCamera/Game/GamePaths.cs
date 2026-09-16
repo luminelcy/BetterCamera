@@ -45,6 +45,18 @@ namespace BetterCamera.Game
 
         public const string BodyRight = Canvas + "/Body/Right";
         public const string FooterCenter = Canvas + "/Footer/Center";
+
+        // 滤镜菜单：各功能面板并列在 ControlsLayout 下
+        public const string FilterMenuBody = Canvas + "/Header/P_FilterMenuObject/Body";
+        public const string ControlsLayout = FilterMenuBody + "/ControlsLayout";
+        public const string ExposureAndTemperatureLayout = ControlsLayout + "/ExposureAndTemperatureLayout";
+        public const string ExposureSlidersLayout = ExposureAndTemperatureLayout + "/SlidersLayout";
+        public const string ExposureSliderLayout = ExposureSlidersLayout + "/ExposureSliderLayout";
+        public const string TemperatureSliderLayout = ExposureSlidersLayout + "/TemperatureSliderLayout";
+
+        // 本 mod 在滤镜菜单里新增的面板（克隆 ExposureAndTemperatureLayout 而来）
+        public const string NameColorAdjustLayout = "P_BCColorAdjustLayout";
+        public const string ColorAdjustLayout = ControlsLayout + "/" + NameColorAdjustLayout;
         public const string FiltersListLayout = FilterMenu + "/FiltersListLayout";
         public const string SpecialEffectsListLayout = FilterMenu + "/SpecialEffectsListLayout";
         public const string FiltersListViewport = FiltersListLayout + "/P_FiltersListObject/ScrollRect/Viewport";

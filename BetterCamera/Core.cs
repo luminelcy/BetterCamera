@@ -45,6 +45,7 @@ namespace BetterCamera
             NearClipAdjuster.Init();
             ExitAdjuster.Init();
             FocusSlider.Init();
+            ColorAdjustSliders.Init();
         }
 
         public override void OnSceneWasUnloaded(int buildIndex, string sceneName)

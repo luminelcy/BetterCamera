@@ -125,6 +125,12 @@ namespace BetterCamera.Il2Cpp
             return Marshal.PtrToStructure<float>(unboxPtr);
         }
 
+        public static int UnboxInt(Il2CppSystem.Object obj)
+        {
+            var unboxPtr = IL2CPP.il2cpp_object_unbox(obj.Pointer);
+            return Marshal.PtrToStructure<int>(unboxPtr);
+        }
+
         // ================= 字段读写 =================
 
         public static void SetFloatField(Il2CppSystem.Object target, Il2CppSystem.Reflection.FieldInfo field, float value)

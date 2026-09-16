@@ -41,6 +41,7 @@
 		<Compile Include="Features\DutchReset.cs" />
 		<Compile Include="Features\ExitAdjuster.cs" />
 		<Compile Include="Features\FocusSlider.cs" />
+		<Compile Include="Features\ColorAdjustSliders.cs" />
 
 		<Compile Include="SliderHandle.cs" />
 		<Compile Include="FX\FXUIHandle.cs" />
