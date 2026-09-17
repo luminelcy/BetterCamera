@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using BetterCamera.Game;
 using BetterCamera.Il2Cpp;
@@ -66,8 +67,18 @@ namespace BetterCamera.Features
 
         private static void OnChanged(float value)
         {
-            if (LensKit.EditFloat(_camera, LensFieldDutch, value))
-                _lastSynced = value;
+            // 挂在滑条的 onValueChanged 上；_camera 是 Init 时缓存、之后不刷新的
+            // il2cpp 引用，失效后 EditFloat 里的反射读会抛。必须在这里吞掉，
+            // 否则会打断 Unity 的输入处理（见 CallbackGuard 的说明）。
+            try
+            {
+                if (LensKit.EditFloat(_camera, LensFieldDutch, value))
+                    _lastSynced = value;
+            }
+            catch (Exception e)
+            {
+                CallbackGuard.Warn("DutchSlider.OnChanged", e);
+            }
         }
     }
 }

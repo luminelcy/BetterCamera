@@ -28,6 +28,7 @@
 		<Compile Include="Il2Cpp\Il2CppReflection.cs" />
 		<Compile Include="Il2Cpp\UnityEventBridge.cs" />
 		<Compile Include="Il2Cpp\SliderKit.cs" />
+		<Compile Include="Il2Cpp\CallbackGuard.cs" />
 		<Compile Include="Il2Cpp\LensKit.cs" />
 		<Compile Include="NativeFovChannel.cs" />
 

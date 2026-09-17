@@ -37,25 +37,36 @@ namespace BetterCamera.Features
 
         private static void OnQuit()
         {
-            if (_camera == null) return;
+            // 挂在返回按钮的 onClick 上。这里必须自己兜住异常：Invoke 是遍历监听者
+            // 调用的，我们抛出会**打断排在后面的监听者** —— 如果游戏的退场处理恰好
+            // 排在我们后面，那就是"按了返回没反应"。LensKit 那几处反射读在 _camera
+            // 失效时会抛，所以这不是理论风险。
+            try
+            {
+                if (_camera == null) return;
 
-            // ① 先落盘 Dutch / NearClipPlane。
-            //    LensKit 每次都是完整的「读整块 → 改一个字段 → 写回」，
-            //    所以两次 EditFloat 会正确叠加。
-            LensKit.EditFloat(_camera, LensFieldDutch, ResetDutch);
-            LensKit.EditFloat(_camera, LensFieldNearClip, ResetNearClip);
+                // ① 先落盘 Dutch / NearClipPlane。
+                //    LensKit 每次都是完整的「读整块 → 改一个字段 → 写回」，
+                //    所以两次 EditFloat 会正确叠加。
+                LensKit.EditFloat(_camera, LensFieldDutch, ResetDutch);
+                LensKit.EditFloat(_camera, LensFieldNearClip, ResetNearClip);
 
-            // ② 再把 FOV 收回原生范围 —— 走原生变量而不是直写 m_Lens，
-            //    这样滑条、响应式变量、相机三者保持同步。
-            float fov = LensKit.ReadFloat(_camera, LensFieldFov);
-            if (float.IsNaN(fov)) return;
+                // ② 再把 FOV 收回原生范围 —— 走原生变量而不是直写 m_Lens，
+                //    这样滑条、响应式变量、相机三者保持同步。
+                float fov = LensKit.ReadFloat(_camera, LensFieldFov);
+                if (float.IsNaN(fov)) return;
 
-            float clamped = fov;
-            if (clamped > FovMax) clamped = FovMax;
-            else if (clamped < FovMin) clamped = FovMin;
+                float clamped = fov;
+                if (clamped > FovMax) clamped = FovMax;
+                else if (clamped < FovMin) clamped = FovMin;
 
-            if (clamped != fov)
-                NativeFovChannel.Set(clamped);
+                if (clamped != fov)
+                    NativeFovChannel.Set(clamped);
+            }
+            catch (Exception e)
+            {
+                CallbackGuard.Warn("ExitAdjuster.OnQuit", e);
+            }
         }
     }
 }

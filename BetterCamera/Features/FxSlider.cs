@@ -1,3 +1,4 @@
+using System;
 using BetterCamera.Game;
 using BetterCamera.Il2Cpp;
 
@@ -70,8 +71,18 @@ namespace BetterCamera.Features
 
         private static void ApplyWeight(Channel ch, float value)
         {
-            if (ch.Volume == null || ch.WeightField == null) return;
-            Il2CppReflection.SetFloatField(ch.Volume, ch.WeightField, value);
+            // 这个回调挂在滑条的 onValueChanged 上，而 ch.Volume 是场景初始化时缓存的
+            // il2cpp 引用、之后不刷新 —— 它被销毁后再拖滑条，SetFloatField 会打在
+            // 悬垂指针上。异常必须在这里吞掉（见 CallbackGuard 的说明）。
+            try
+            {
+                if (ch.Volume == null || ch.WeightField == null) return;
+                Il2CppReflection.SetFloatField(ch.Volume, ch.WeightField, value);
+            }
+            catch (Exception e)
+            {
+                CallbackGuard.Warn("FxSlider.ApplyWeight", e);
+            }
         }
     }
 }

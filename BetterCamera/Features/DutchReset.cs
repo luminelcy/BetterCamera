@@ -1,3 +1,4 @@
+using System;
 using BetterCamera.Game;
 using BetterCamera.Il2Cpp;
 
@@ -29,7 +30,16 @@ namespace BetterCamera.Features
 
         private static void ResetDutch()
         {
-            LensKit.EditFloat(_camera, LensFieldDutch, 0f);
+            // 挂在按钮 onClick 上，异常会打断同一条事件上排在后面的监听者 ——
+            // 必须自己吞（见 CallbackGuard 的说明）。
+            try
+            {
+                LensKit.EditFloat(_camera, LensFieldDutch, 0f);
+            }
+            catch (Exception e)
+            {
+                CallbackGuard.Warn("DutchReset.ResetDutch", e);
+            }
         }
     }
 }
