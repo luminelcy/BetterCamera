@@ -347,7 +347,7 @@ namespace BetterCamera.Features
         {
             try
             {
-                float value = PostProcessStack.Effective(k.Param, out _);
+                float value = PostProcessStack.Effective(k.Param, out bool overriddenByStack);
 
                 // 写值和移手柄是两件事：只写值会出现"值对、手柄还在旧位置"，玩家一抓手柄就被拽回去
                 if (k.Slider != null)
@@ -355,6 +355,12 @@ namespace BetterCamera.Features
                     SliderKit.SetValueQuiet(k.Slider, value);
                     SliderKit.RefreshVisuals(k.Slider);
                 }
+
+                // 【临时诊断，定位完删】这两行是"一拖就跳"那类问题的判据：
+                // 生效值必须等于滑条起始值，否则玩家一拖画面就会跳。
+//                 MelonLogger.Msg("[color] " + k.Param + " 实际生效值=" + value
+//                                 + "（被某一层 override=" + overriddenByStack + "）"
+//                                 + (k.Slider == null ? "（拿不到滑条）" : " 滑条已同步"));
             }
             catch (Exception e)
             {

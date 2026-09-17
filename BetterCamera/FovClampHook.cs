@@ -40,6 +40,26 @@ namespace BetterCamera
         {
             if (_applied) return true;
 
+            // 【临时诊断，定位完删】no-fov ⇒ 不挂。
+            //
+            // 为什么它是现在最可疑的一个：
+            //   · 它是本 mod 唯一一个**两个 ref 结构体参数**的补丁
+            //     （`ref RoomCameraFOV s, ref RoomCameraFOV __result`），
+            //     Harmony 对 il2cpp 值类型 ref 的编组只要差一点，踩的就是调用者的栈。
+            //   · 它挂在 RoomCameraFOV 变量的 ResultSelector 上，**每次读写 FOV 都会跑**
+            //    （滚轮 / 滑条 / 场景每帧的同步都过这条路径）—— 是全项目最热的补丁。
+            //   · 用户 2026-09-17 贴的崩溃是
+            //     `AccessViolationException: Attempted to read or write protected memory.
+            //      This is often an indication that **other memory is corrupt**`
+            //     —— 典型的"被别人踩坏"，而且**有概率**（时好时坏）。
+            //   · 它此前**没有开关**，是唯一从未被单独排除过的补丁。
+            if (ProbeFlags.Has("no-fov"))
+            {
+//                 MelonLogger.Msg("[probe] no-fov：不挂 FOV 钳制补丁（对照实验）");
+                _applied = true;
+                return true;
+            }
+
             try
             {
                 // 直接按名字特征在托管代理里找，不依赖 RoomCameraController 实例 ——
@@ -95,9 +115,13 @@ namespace BetterCamera
         ///
         /// 返回 false = 跳过原方法。
         /// </summary>
-        public static bool Prefix(ref RoomCameraFOV s, ref RoomCameraFOV __result)
+        public static bool Prefix(ref RoomCameraFOV __0, ref RoomCameraFOV __result)
         {
-            float v = s.Value;
+            // ⚠️ 参数用位置名 `__0`：Harmony 按参数**名**配对，而 il2cpp 方法在原生侧
+            // 没有参数名，名字对不上就可能按错布局取值/回写、踩调用者的栈。
+            // 2026-09-18 靠这条线索定位到 CaptureSizeRatioHook.AspectRatioPrefix，
+            // 全项目所有带参数的补丁统一改用位置名。
+            float v = __0.Value;
             if (v <= 0f) v = 60f;                    // 原生兜底：FOV=0 会让投影退化
             if (v < MinFov) v = MinFov;
             if (v > MaxFov) v = MaxFov;

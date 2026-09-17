@@ -26,6 +26,26 @@ namespace BetterCamera
 
         public static void Init(MelonLogger.Instance logger)
         {
+            // 【临时诊断，定位完删】no-slider-clone ⇒ 整块跳过。
+            //
+            // 为什么它现在是头号嫌疑：
+            //   · 本文件最后那句 `UnityEngine.Object.Destroy(original)` 是整个 mod
+            //     **唯一一处销毁游戏自己对象**的地方（销毁原生 P_ZoomHandleObject），
+            //     而且每次进拍照场景都执行；
+            //   · 销毁对象 = 制造悬垂引用。游戏那边只要还持着某个引用，之后一访问
+            //     就是"读已释放的内存"—— 正好对应崩溃里的
+            //     `AccessViolationException ... other memory is corrupt`；
+            //   · "有概率"也对得上：取决于那块内存有没有被重新分配出去。
+            //
+            // 关掉它 = 移除整块"动游戏对象"的操作（克隆 + 销毁）。
+            // 副作用：几个滑条找不到克隆体会自行降级（FindSlider 返回 null 就 return），
+            // 缩放/对焦/荷兰角那几个滑条会消失 —— 这一轮只看快门和返回键能不能活。
+            if (ProbeFlags.Has("no-slider-clone"))
+            {
+//                 logger.Msg("[probe] no-slider-clone：跳过 SliderHandle（对照实验）");
+                return;
+            }
+
             var original = GameObject.Find(ZoomHandlePath);
 
             // 这个守卫一度被注释掉。恢复它的理由：下面第一件事就是 original.transform，

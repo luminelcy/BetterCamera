@@ -57,11 +57,30 @@
 		<Compile Include="FovClampHook.cs" />
 		<Compile Include="FilterMenuVisibilityHook.cs" />
 		<Compile Include="CaptureSizeRatioHook.cs" />
-		<Compile Include="PortraitToggleSuppressHook.cs" />
+		<!-- 把自定义比例注册成游戏自己的拍照尺寸（插开关字典 + 三处写死分支各补一刀） -->
+		<Compile Include="CaptureSizeNativeBridge.cs" />
 		<!-- 挡掉克隆体上那个没被 Zenject 注入过的 MonoKernel 在 Start 里抛的空引用 -->
 		<Compile Include="MonoKernelGuardHook.cs" />
 		<!-- 挡掉克隆体按钮被点击时那条「点击 → 音效」链抛的空引用 -->
 		<Compile Include="ClickSoundGuardHook.cs" />
+		<!-- 【临时诊断】定位 MelonLoader 日志里那 6 条 Zenject.MonoKernel.Start 空引用是哪个安装器 -->
+		<Compile Include="ZenjectInstallTraceHook.cs" />
+		<!-- 【临时诊断】定位 DOTween 那几条「目标丢了」的补间在动哪个对象 -->
+		<Compile Include="DotweenTargetTraceHook.cs" />
+		<!-- 【临时诊断】打印所有 Volume 的后处理参数值与 override 状态 -->
+		<Compile Include="ColorStackProbe.cs" />
+		<!-- 【临时诊断】用文件当开关，二分定位卡死 -->
+		<Compile Include="ProbeFlags.cs" />
+		<!-- 把"请求被静默丢弃"变成一行日志（卡死现场唯一的可观察量） -->
+		<Compile Include="RequestDropProbeHook.cs" />
+		<!-- 把被 Forget() 吞掉的异步异常捞出来 -->
+		<Compile Include="UniTaskExceptionProbeHook.cs" />
+		<!-- 场景流程的启动点 + installer 所在对象（定位"谁销毁了它"） -->
+		<Compile Include="SceneLifecycleProbeHook.cs" />
+		<!-- 记录每一次 Object.Destroy 的对象名（销毁 = 取消 destroyCancellationToken） -->
+		<Compile Include="DestroyTraceProbeHook.cs" />
+		<!-- 抓"谁取消了 destroyCancellationToken"（MonoBehaviour.RaiseCancellation） -->
+		<Compile Include="CancellationTraceProbeHook.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -117,6 +136,11 @@
 	  </Reference>
 	  <Reference Include="Il2CppViewAssemblyDefinition">
 	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Il2CppAssemblies\Il2CppViewAssemblyDefinition.dll</HintPath>
+	  </Reference>
+	  <!-- 拍照尺寸开关字典的类型（SerializableDictionaryBase<CaptureSize, …>）在这里。
+	       引用它是为了让编译器保证"键是 CaptureSize 枚举"—— 见 CaptureSizeNativeBridge 的键类型陷阱说明。 -->
+	  <Reference Include="Il2CppRotaryHeart.SerializableDictionaryLite">
+	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Il2CppAssemblies\Il2CppRotaryHeart.SerializableDictionaryLite.dll</HintPath>
 	  </Reference>
 	  <Reference Include="Unity.InputSystem">
 	    <HintPath>..\..\gogh Focus with Your Avatar\MelonLoader\Il2CppAssemblies\Unity.InputSystem.dll</HintPath>

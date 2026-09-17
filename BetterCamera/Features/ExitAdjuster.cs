@@ -1,4 +1,5 @@
 using System;
+using MelonLoader;
 using BetterCamera.Game;
 using BetterCamera.Il2Cpp;
 
@@ -43,6 +44,10 @@ namespace BetterCamera.Features
             // 失效时会抛，所以这不是理论风险。
             try
             {
+                // 【临时诊断，定位完删】记下"按了返回"这一刻的现场。卡死是"按了返回没退出"，
+                // 所以这一行和它前后的 [tween] 行就是判定"卡在哪一刀"的依据。
+//                 MelonLogger.Msg("[exit] 返回键被按下 " + CaptureSizePresets.CropStateLine());
+
                 if (_camera == null) return;
 
                 // ① 先落盘 Dutch / NearClipPlane。

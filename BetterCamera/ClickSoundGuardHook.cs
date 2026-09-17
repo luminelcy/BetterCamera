@@ -94,7 +94,7 @@ namespace BetterCamera
                     var field = Il2CppReflection.FindIl2CppField(Il2CppType.From(behaviourType), PlayerFieldName);
                     if (field == null) continue;
 
-                    string key = behaviourType.FullName + "." + method.Name;
+                    string key = Il2CppReflection.MethodKey(method);
                     if (!Patched.Add(key)) continue;
 
                     _playerField ??= field;

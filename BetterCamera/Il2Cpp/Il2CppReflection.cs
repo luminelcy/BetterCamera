@@ -65,6 +65,34 @@ namespace BetterCamera.Il2Cpp
             => Find(type, methodName, Il2CppSystem.Reflection.BindingFlags.Instance);
 
         /// <summary>
+        /// 按名字 + **参数个数**找实例方法。
+        ///
+        /// 只给名字是不安全的：同名重载有几个时，拿到的是哪一个取决于元数据顺序 ——
+        /// 调下去就是"静默调错方法"。要用返回值/参数个数区分的调用方一律走这个重载。
+        /// </summary>
+        public static Il2CppSystem.Reflection.MethodInfo FindIl2CppMethod(Il2CppSystem.Type type, string methodName, int argCount)
+        {
+            var current = type;
+            while (current != null)
+            {
+                var methods = current.GetMethods(
+                    Il2CppSystem.Reflection.BindingFlags.Instance |
+                    Il2CppSystem.Reflection.BindingFlags.Public |
+                    Il2CppSystem.Reflection.BindingFlags.NonPublic);
+
+                for (int i = 0; i < methods.Length; i++)
+                {
+                    if (methods[i].Name != methodName) continue;
+                    if (methods[i].GetParameters().Length != argCount) continue;
+                    return methods[i];
+                }
+
+                current = current.BaseType;
+            }
+            return null;
+        }
+
+        /// <summary>
         /// 静态方法（含静态属性的 getter/setter，它们在 C# 里就是静态方法）。
         /// 和 FindIl2CppMethod 分开是因为 BindingFlags 不兼容 —— 合并成一个方法就得猜调用方想要哪种。
         /// </summary>
@@ -130,6 +158,44 @@ namespace BetterCamera.Il2Cpp
             return new Il2CppSystem.Object(boxedPtr);
         }
 
+        /// <summary>
+        /// 按**枚举自己的类型**装箱一个枚举值。
+        ///
+        /// ⚠️ 这个方法和 `BoxInt` 的区别是致命的，不要混用：
+        ///   `BoxInt(3)` 造出来的是 **System.Int32**，
+        ///   而游戏的容器（如 `SerializableDictionaryBase&lt;CaptureSize, …&gt;`）要的是
+        ///   **CaptureSize** 枚举。两者在托管侧看起来都是"一个整数"，
+        ///   il2cpp 侧却是两个不同的类型 —— 塞进字典就是**坏条目**：
+        ///   游戏遍历到它时类型对不上号，连锁破坏它自己的状态机。
+        ///
+        /// 这正是本项目反复栽过的那个坑（滤镜菜单那次、以及 2026-09-18 确认的
+        /// 拍照尺寸开关字典那次）。**托管侧 `new object[] { someEnum }` 的装箱同样不可信** ——
+        /// 它最终落成什么类型取决于 Il2CppInterop 的编组，实测会退化成 Int32。
+        /// 所以枚举进 il2cpp 容器一律走这里。
+        ///
+        /// `enumType` 从目标方法的参数类型上取（`GetParameters()[i].ParameterType`），
+        /// 那是**闭合泛型实例实际要求**的类型，比按名字找可靠。
+        /// </summary>
+        public static Il2CppSystem.Object BoxEnum(Type enumType, int value)
+        {
+            if (enumType == null) return null;
+
+            // 委托类型是托管 Type（从 MethodInfo.GetParameters()[i].ParameterType 拿到的），
+            // 而 il2cpp 的 value_box 要 il2cpp 侧的 class —— 过一层 Il2CppType.From。
+            var cls = IL2CPP.il2cpp_class_from_system_type(Il2CppType.From(enumType).Pointer);
+
+            var ptr = Marshal.AllocHGlobal(4);
+            try
+            {
+                Marshal.WriteInt32(ptr, value);
+                return new Il2CppSystem.Object(IL2CPP.il2cpp_value_box(cls, ptr));
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(ptr);
+            }
+        }
+
         public static float UnboxFloat(Il2CppSystem.Object obj)
         {
             var unboxPtr = IL2CPP.il2cpp_object_unbox(obj.Pointer);
@@ -185,6 +251,29 @@ namespace BetterCamera.Il2Cpp
             var wrapped = WrapAsManaged(raw, "UnityEngine.Object");
             var name = wrapped?.GetType().GetProperty("name")?.GetValue(wrapped) as string;
             return string.IsNullOrEmpty(name) ? null : name;
+        }
+
+        // ================= 给 Harmony 补丁用的目标标识 =================
+
+        /// <summary>
+        /// 一个方法在"补丁去重表"里的键：**必须带程序集**。
+        ///
+        /// 只写 FullName + 方法名是不够的：游戏类型可能同时存在于
+        /// `Il2Cpp*AssemblyDefinition` 与 `Assembly-CSharp` 两份代理程序集里（FullName 完全相同），
+        /// 那样的键会把"两份都要打"的第二份静默丢掉 —— 正好把"扫遍所有程序集、每份都打"的初衷反过来执行。
+        /// 三处补丁注册（MonoKernelGuardHook / ClickSoundGuardHook / CaptureSizeNativeBridge）共用这一个键。
+        /// </summary>
+        public static string MethodKey(MethodInfo method)
+        {
+            if (method == null) return "?";
+
+            var type = method.DeclaringType;
+            if (type == null) return "?";
+
+            string asm;
+            try { asm = type.Assembly.GetName().Name; } catch { asm = "?"; }
+
+            return asm + "|" + type.FullName + "." + method.Name + "/" + method.GetParameters().Length;
         }
 
         // ================= 字段读写 =================

@@ -73,6 +73,30 @@ namespace BetterCamera
         {
             if (_applied) return true;
 
+            // 【临时诊断，定位完删】no-kernel-guard ⇒ 不挂。
+            //
+            // 为什么值得单独做这个对照：2026-09-17 23:09 的读数把问题逼到了这里 ——
+            //   [lifecycle] StartSequence … 令牌=★已取消★  installer=0x27F0543FE00
+            //               令牌源=已创建(0x27F9D727E10)
+            // 而 `[cancel]` 记录的 10 个被取消对象的 cts 指针**没有一个**等于 0x27F9D727E10
+            // ⇒ 那个 CTS 从来没被取消过 ⇒ "已取消"是**读无效指针**得到的垃圾值。
+            //
+            // 也就是说 installer 的 m_CancellationTokenSource 里存的就是个坏指针，
+            // StartSequence 去碰它就有概率 AccessViolation（用户 2026-09-17 贴的崩溃栈，
+            // 落点正是 StartSequence，路径是 MonoKernel.Start → InitializableManager
+            // → installer.Initialize）。
+            //
+            // 而这个方法上挂着本 mod 的两个补丁（MonoKernelGuardHook + ZenjectInstallTraceHook），
+            // 两个都用 `object __instance` 收参 —— 那个写法项目注释说"对任何托管对象都成立"，
+            // 但**从没验证过在 il2cpp 调用约定下是否真的安全**，而它每进一次拍照场景要跑几百次。
+            // 关掉它跑一次，是判断"是不是我们踩坏调用约定"的最短路径。
+            if (ProbeFlags.Has("no-kernel-guard"))
+            {
+//                 MelonLogger.Msg("[probe] no-kernel-guard：不挂 MonoKernel 守卫（对照实验）");
+                _applied = true;
+                return true;
+            }
+
             try
             {
                 CollectTargets();
@@ -100,8 +124,7 @@ namespace BetterCamera
                 int patched = 0;
                 foreach (var method in Targets)
                 {
-                    string key = (method.DeclaringType != null ? method.DeclaringType.FullName : "?")
-                                 + "." + method.Name;
+                    string key = Il2CppReflection.MethodKey(method);
                     if (!Patched.Add(key)) continue;
 
                     _harmony.Patch(method,
@@ -123,9 +146,14 @@ namespace BetterCamera
         /// <summary>
         /// 扫遍所有 Il2Cpp* 程序集，收所有叫 MonoKernel 的类型的无参 Start。
         ///
-        /// **不用 typeof 取目标** —— 同名类型在多个程序集里都有（Assembly-CSharp /
-        /// Il2CppBehaviourAssemblyDefinition / Il2CppViewAssemblyDefinition），编译期只能拿到
-        /// 其中一个，补丁就打在了没人经过的那份上：绑上了，但一次不触发。上一个诊断就栽在这里。
+        /// **不用 typeof 取目标** —— 编译期只能拿到某一个程序集里的那份，运行时用哪份取决于加载顺序；
+        /// 扫遍所有程序集、按名字收，两种情形都成立。
+        ///
+        /// （2026-09-17 更正一条旧说法：这里原本写"同名类型在多份程序集里都有"，但用元数据扫描器
+        /// 枚举全部 85 个代理程序集后确认 —— MonoKernel 只在 Il2CppZenject 里定义一份，多数 grep
+        /// 命中其实是 TypeRef 引用。**不过**"同名同 FullName、只有程序集不同"的情形在别的类型上确实
+        /// 存在（例如 …MoveToJoinMultiRoomButtonObjectPresenter 同时在 Assembly-CSharp 与
+        /// Il2CppPresenterAssemblyDefinition 里），所以这套"扫遍 + 每份都打"的写法仍然是对的。）
         ///
         /// GetTypes() 在大程序集上会抛 ReflectionTypeLoadException（部分类型依赖缺失），
         /// 必须从异常里取已加载的那部分，否则恰好会跳过目标所在的大程序集。
@@ -170,10 +198,11 @@ namespace BetterCamera
             var objBase = __instance as Il2CppObjectBase;
             if (objBase == null) return true;   // 认不出来就别插手，走原逻辑
 
+            Il2CppSystem.Object raw;
             bool injected;
             try
             {
-                var raw = new Il2CppSystem.Object(objBase.Pointer);
+                raw = new Il2CppSystem.Object(objBase.Pointer);
                 // 非 null ⇒ 这个 kernel 被某个容器注入过 ⇒ 一切照常
                 injected = _managerField.GetValue(raw) != null;
             }
@@ -183,7 +212,22 @@ namespace BetterCamera
                 return true;
             }
 
-            return injected;   // 注入过的照常执行；没注入的跳过（原方法必抛空引用）
+            if (injected) return true;
+
+            // ⚠️ 跳过 = 这个 GameObjectContext 的 Initialize() **不会跑**，它下面所有
+            // IInitializable 都不初始化。预期里只有本 mod 的克隆体会走到这里；
+            // 一旦游戏自己的对象出现在这条日志里，表现就是「场景加载不完整」——
+            // 而这条路径原本是完全静默的（只是少跑一段初始化，没有任何异常）。
+            //
+            // 2026-09-17 的相关线索：第二次进拍照场景时 MonoKernel 的候补从 1 个变成 2 个
+            // （类型出现了两份），而 _managerField 是**第一次解析后就缓存、再不解析**的
+            //（Apply 有 _applied 闩）。旧 FieldInfo 读新对象若读到 null，就会误判成
+            // "没被注入" → 把游戏自己的 kernel 跳过。
+            string name = Il2CppReflection.GetObjectName(raw) ?? "(读不到名字)";
+            if (Reported.Add("skip:" + name))
+                MelonLogger.Warning("[BetterCamera] 跳过未注入的 kernel（它的 Initialize 不会跑）: " + name);
+
+            return false;   // 注入过的照常执行；没注入的跳过（原方法必抛空引用）
         }
 
         /// <summary>同一个站点只报一次 —— 这个函数会随每个 kernel 的 Start 被调用。</summary>

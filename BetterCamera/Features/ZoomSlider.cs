@@ -61,10 +61,21 @@ namespace BetterCamera.Features
 
         private static void OnChanged(float value)
         {
-            // 不直接写相机 m_Lens —— 写游戏的响应式变量，由它的 UpdateFOV 去改相机。
-            // 这样滚轮/键盘/滑条作用于同一个值，不会互相打架。
-            if (NativeFovChannel.Set(value))
-                _lastSynced = value;   // 自己写的值记下来，免得下一帧同步又推回去
+            // 本 mod 其余五个 UnityEvent 回调（FxSlider / DutchSlider / DutchReset /
+            // ExitAdjuster / ColorAdjustSliders）都自己兜了异常，只有这里漏了。
+            // 这个回调挂在 Slider.m_OnValueChanged 上：异常会顺着 Invoke 冒进 Unity 的
+            // 输入处理，打断同一条事件上排在后面的监听者 —— 见 CallbackGuard 的说明。
+            try
+            {
+                // 不直接写相机 m_Lens —— 写游戏的响应式变量，由它的 UpdateFOV 去改相机。
+                // 这样滚轮/键盘/滑条作用于同一个值，不会互相打架。
+                if (NativeFovChannel.Set(value))
+                    _lastSynced = value;   // 自己写的值记下来，免得下一帧同步又推回去
+            }
+            catch (Exception e)
+            {
+                CallbackGuard.Warn("ZoomSlider.OnChanged", e);
+            }
         }
     }
 }

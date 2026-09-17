@@ -14,8 +14,9 @@ namespace BetterCamera.Il2Cpp
     ///   2. 打断**这一次 UI 输入处理**：异常继续冒到 UI 事件链，Unity 记一条日志，
     ///      那一帧剩下的 UI 事件被跳过。
     ///
-    /// 作者在 `CaptureSizePresets.GuardedSelect` 上踩过并把这个现象写在了注释里
-    /// （"点了这个之后别的按钮也不响应"），但只在那一处包了 —— 其余几个回调
+    /// 作者在拍照比例那个切换回调上踩过并把这个现象写在了注释里
+    /// （"点了这个之后别的按钮也不响应"，原 `GuardedSelect`，原生化改造后那段回调已随之下线），
+    /// 但当时只在那一处包了 —— 其余几个回调
     /// （FxSlider / DutchSlider / ExitAdjuster / DutchReset）都是裸的。
     ///
     /// **为什么不做在 UnityEventBridge 里统一包**：那需要把注册的回调换成闭包，

@@ -8,30 +8,32 @@ using Il2CppProject.HomeScene.RoomScene.RoomSnapScene;
 namespace BetterCamera.Features
 {
     /// <summary>
-    /// 给拍照尺寸菜单补几个常用的固定比例。
+    /// 给拍照尺寸菜单补几个常用的固定比例 —— 做法是让它们**成为游戏自己的选项**。
     ///
-    /// 为什么不能像 ColorAdjust 那样"改一个枚举值就完事"：游戏把「CaptureSize → 比例」
-    /// 写死成了三个内联常量（`RoomSnapSceneSequence.&lt;TakePhotoWithCaptureSizeAsync&gt;d__159.MoveNext`），
-    /// 加新枚举值只会落到 else = 不裁切分支。所以比例得由 mod 自己在出片链路上替换
-    /// （见 CaptureSizeRatioHook），这里只负责 UI + "当前选中的是哪个自定义比例"。
+    /// 【原生化改造，2026-09-17】4 个预设各自占一个空闲的 <c>CaptureSize</c> 值（3~6），
+    /// 由 <see cref="CaptureSizeNativeBridge"/> 插进游戏的开关字典
+    /// `CaptureSizeMenuObjectView._captureSizeSwitchButtons`。于是：
+    ///   点击 → 游戏自己合并的 OnCaptureSizeSwitchButtonClicked → Presenter 的
+    ///   CurrentCaptureSizeSetter.Set(我们的键) → 游戏按「key == 当前值」刷全表开关视觉。
+    /// mod 这边只剩两件事：这里建克隆体、<c>OnSizeChanged</c> 记住选中的是哪个预设。
     ///
-    /// 选项**不进**游戏的 `_captureSizeSwitchButtons` 字典：那个字典运行中加不进去
-    /// （`OnCaptureSizeSwitchButtonClicked` 每次访问都重建 Merge 流，而 Presenter 只在
-    /// StartLifeCycle 里订阅一次），而且往里塞条目正是滤镜菜单那边踩过的坑。
-    /// 新选项的点击和开关视觉都由这里自己管。
+    /// 【为什么比例还得由 mod 提供】游戏把「CaptureSize → 比例」写死成了内联常量，而且
+    /// **有三份**（取景框状态变化 `CaptureSizeCropObjectView.&lt;InitView&gt;b__10_0`、取景框
+    /// 窗口 resize 的 LateUpdate、出片状态机 `RoomSnapSceneSequence.&lt;TakePhotoWithCaptureSizeAsync&gt;`），
+    /// 我们的键在三处都会掉进 else = "不裁切"。所以那三处各补了一刀（见 CaptureSizeNativeBridge）：
+    /// 前两处由我们按比例下发取景框，第三处只把**参数**换成 Portrait，让出片照旧走
+    /// "按比例裁切"分支，再由 <see cref="CaptureSizeRatioHook"/> 把写死的 9:16 换成玩家的比例。
     ///
-    /// 价格：因为不写 CurrentCaptureSize，游戏自己的状态会停在原来那个原生选项上。
-    /// 没有副作用 —— 观察这个变量的只有这个菜单和取景框，两处都由本 mod 接管了。
+    /// 【和改造前的区别】以前是"借 Portrait 路口"：不写状态、靠推 Portrait 让出片能裁，
+    /// 代价是推的那一下游戏会把取景框动画到 9:16，得靠"同帧接管"+ 压制开关视觉那套补丁
+    /// （9:16 掠影的根源）。现在状态就是我们的键，游戏一路自己走，那套补丁全部删掉了。
     /// </summary>
     public static class CaptureSizePresets
     {
         private const string OptionNodeName = "P_SettingsToggleSwitchButton";
         private const string LabelNodeName = "CommonLocalizeText";
 
-        /// <summary>原生选项的命名前缀。我们的叫 P_BCCaptureSizeOption_*，不会误伤。</summary>
-        private const string NativeOptionPrefix = "CaptureSizeOption_";
-
-        private const string ToggleTypeName =
+        internal const string ToggleTypeName =
             "Il2CppCommon.Prefabs.CommonSwitchButton.CommonSwitchButtonBehaviour";
         private const string CropViewTypeName =
             "Il2CppProject.HomeScene.RoomScene.RoomSnapScene.CaptureSizeCropObject.CaptureSizeCropObjectView";
@@ -40,20 +42,24 @@ namespace BetterCamera.Features
         private const string PresenterTypeName =
             "Il2CppProject.HomeScene.RoomScene.RoomSnapScene.CaptureSizeMenuObject.CaptureSizeMenuObjectPresenter";
 
-        private sealed class Preset
+        internal sealed class Preset
         {
             public string Name;     // 克隆体名字（UI 契约）
             public string Label;    // 显示给玩家的文字 —— 比例名与语言无关，不用查表
             public float Ratio;     // 宽 / 高
+            public CaptureSize Key; // 注册进游戏字典用的键（真的 CaptureSize 值，见下面数组的注释）
             public Il2CppSystem.Object Toggle;
         }
 
+        // 键用 3~6：游戏只定义了 0/1/2（Default/Portrait/HoloModelink），3 以上空闲，
+        // 而 CaptureSize 底层就是 int —— 游戏对它的比较、字典键、内联分支全按整数值走，
+        // 所以塞新值进去和塞原生值进去在它眼里是一回事（见 CaptureSizeNativeBridge 的说明）。
         private static readonly Preset[] Presets =
         {
-            new Preset { Name = "P_BCCaptureSizeOption_1x1", Label = "1:1", Ratio = 1f },
-            new Preset { Name = "P_BCCaptureSizeOption_5x4", Label = "5:4", Ratio = 1.25f },
-            new Preset { Name = "P_BCCaptureSizeOption_4x3", Label = "4:3", Ratio = 4f / 3f },
-            new Preset { Name = "P_BCCaptureSizeOption_3x2", Label = "3:2", Ratio = 1.5f },
+            new Preset { Name = "P_BCCaptureSizeOption_1x1", Label = "1:1", Ratio = 1f, Key = (CaptureSize)3 },
+            new Preset { Name = "P_BCCaptureSizeOption_5x4", Label = "5:4", Ratio = 1.25f, Key = (CaptureSize)4 },
+            new Preset { Name = "P_BCCaptureSizeOption_4x3", Label = "4:3", Ratio = 4f / 3f, Key = (CaptureSize)5 },
+            new Preset { Name = "P_BCCaptureSizeOption_3x2", Label = "3:2", Ratio = 1.5f, Key = (CaptureSize)6 },
         };
 
         /// <summary>当前选中的自定义预设；null = 玩家在用原生选项（或不裁切）。</summary>
@@ -64,29 +70,20 @@ namespace BetterCamera.Features
         private static bool _cropMethodResolved;
         private static Il2CppSystem.Reflection.MethodInfo _cropMethod;
 
-        /// <summary>
-        /// 游戏状态是否已经被本 mod 推到 Portrait 了。
-        ///
-        /// 这个闸门是「选中跳一帧 9:16」的正解。机制是：
-        ///
-        ///   RequestNativePortrait() 把 CurrentCaptureSize 推成 Portrait
-        ///     └─ 游戏按「key == 当前值」重刷一遍开关视觉 → **Portrait 被点亮**
-        ///   RefreshToggleVisuals() 紧接着又把它按灭
-        ///
-        /// 两次写入在同一帧，但点亮那一下启动了一段 timeline（_onOnTimeline），
-        /// 那一帧渲染出来就是 Portrait 亮着的样子 —— 肉眼就是"跳一帧 9:16"。
-        ///
-        /// 而**第二次之后切换，CurrentCaptureSize 本来就是 Portrait**：再推一次
-        /// 纯属多余，却每次都让游戏重刷一遍开关。所以推过就不再推，只在玩家中途
-        /// 去点了原生选项（见 OnNativeSizeChosen）之后才需要重新推。
-        /// </summary>
-        private static bool _droveToPortrait;
-
         /// <summary>给补丁用：当前该按哪个比例裁切；null = 不插手，交给游戏。</summary>
         public static float? SelectedRatio => _selected?.Ratio;
 
         public static void Init()
         {
+            // 【临时诊断，定位完删】no-clones ⇒ 整个功能不建（菜单里只有原生三项）＝ 最干净的基准盘。
+            // 只关补丁/字典是不够的：克隆体本身还在建、还在菜单里占位、还挂着我们的点击监听，
+            // 那些都可能是卡死的一部分（玩家 2026-09-17 指出基准盘里还能看到自定义比例）。
+            if (ProbeFlags.Has("no-clones"))
+            {
+//                 MelonLogger.Msg("[probe] no-clones：本次不创建自定义比例（菜单里只有原生三项）");
+                return;
+            }
+
             var template = GameObject.Find(GamePaths.CaptureSizeOptionTemplate);
             var parent = GameObject.Find(GamePaths.CaptureSizeMenuBody);
             if (template == null || parent == null)
@@ -108,37 +105,120 @@ namespace BetterCamera.Features
                 if (!BuildOption(option, preset))
                     continue;
             }
+
+            // 克隆体建好之后把它们注册进游戏的开关字典：这样游戏自己的视觉刷新（每次状态变化
+            // 遍历字典现算）会带上我们 —— 原生三项自动按灭、我们那个自动点亮。
+            // 点击入流那份快照赶不上（见 BuildOption 的说明），由我们的点击监听补。
+            CaptureSizeNativeBridge.RegisterPresets();
         }
 
         /// <summary>离开拍照场景时清掉缓存 —— 这些是随场景销毁的对象，留着就是悬垂指针。</summary>
         public static void Reset()
         {
             _selected = null;
-            _droveToPortrait = false;
             foreach (var p in Presets) p.Toggle = null;
         }
 
         /// <summary>
-        /// 原生选项被选中了（由补丁在游戏自己的开关刷新之后调）。
-        /// 这是"玩家离开了自定义预设"的唯一信号 —— 我们没写 CurrentCaptureSize，
-        /// 所以原生那条路不会有任何别的通知。
+        /// 把玩家的选择交给**游戏自己的 Presenter**：调它那个"收 CaptureSize 的方法"（= 点击回调本体
+        /// `&lt;StartLifeCycle&gt;b__28_7`，反编译确认它只有一句 `CurrentCaptureSizeSetter.Set(...)`）。
+        ///
+        /// 为什么不自己写 CurrentCaptureSize：那要凭空造一个 CurrentCaptureSize（传装箱的枚举），
+        /// 是这个项目踩过两次的静默失效类型。走它的方法 = 状态由游戏自己的代码构造和写入，
+        /// 写完之后游戏的 b__8_1 会把整本字典刷一遍（我们那 4 个开关因此在视觉上也跟着亮）。
         /// </summary>
-        public static void OnNativeSizeChosen()
+        private static void PushKey(Preset preset)
         {
-            // 玩家回到原生选项了，游戏状态不再是我们推的 Portrait —— 下次选预设要重新推
-            _droveToPortrait = false;
+            // 【临时诊断，定位完删】"玩家点了哪个预设"这一步的轨迹
+//             MelonLogger.Msg("[key] 推送 " + preset.Label + "（键 " + (int)preset.Key + "）");
 
-            if (_selected == null) return;
-            _selected = null;
-            RefreshToggleVisuals();
+            try
+            {
+                var installer = NativeRefs.FindComponent(GamePaths.CaptureSizeMenu, MenuInstallerTypeName);
+                var presenter = installer == null
+                    ? null
+                    : Il2CppReflection.FindIl2CppField(installer.GetIl2CppType(), "_presenter")?.GetValue(installer);
+
+                var wrapper = Il2CppReflection.WrapAsManaged(presenter, PresenterTypeName);
+                if (wrapper == null)
+                {
+                    MelonLogger.Warning("[BetterCamera] 拿不到拍照尺寸菜单的 Presenter，" + preset.Label + " 切不过去");
+                    return;
+                }
+
+                // 按签名找：Presenter 上只有那个处理点击的 lambda 收 CaptureSize
+                foreach (var method in wrapper.GetType().GetMethods(
+                             System.Reflection.BindingFlags.Instance |
+                             System.Reflection.BindingFlags.Public |
+                             System.Reflection.BindingFlags.NonPublic))
+                {
+                    var parameters = method.GetParameters();
+                    if (parameters.Length != 1 || parameters[0].ParameterType.Name != "CaptureSize") continue;
+
+                    // 【临时诊断】探针开关：native-state ⇒ 推 Portrait（= 状态永远留在原生值域里）
+                    var target = ProbeFlags.Has("native-state") ? CaptureSize.Portrait : preset.Key;
+                    method.Invoke(wrapper, new object[] { target });
+                    return;
+                }
+
+                MelonLogger.Warning("[BetterCamera] Presenter 上没有收 CaptureSize 的方法，" + preset.Label + " 切不过去");
+            }
+            catch (Exception e)
+            {
+                // 这个回调挂在 Button.onClick 上：异常冒出去会打断这一整次 UI 输入处理（见 CallbackGuard 的说明）
+                MelonLogger.Warning("[BetterCamera] 切换拍照比例失败: " + e.Message);
+            }
+        }
+
+        /// <summary>按钮位置不猜：从 CommonButtonBehaviour._button 拿游戏自己存的引用。</summary>
+        private static Il2CppSystem.Object TakeButton(Il2CppSystem.Object toggle)
+        {
+            var behaviour = Il2CppReflection
+                .FindIl2CppField(toggle.GetIl2CppType(), "_switchButton")?.GetValue(toggle);
+
+            return behaviour == null
+                ? null
+                : Il2CppReflection.FindIl2CppField(behaviour.GetIl2CppType(), "_button")?.GetValue(behaviour);
+        }
+
+        /// <summary>给原生化桥用：全部预设（含它们的键、比例和克隆出来的开关）。</summary>
+        internal static Preset[] All => Presets;
+
+        /// <summary>键 → 比例。不是自定义预设的键返回 null —— 那意味着"这是游戏自己的尺寸，别插手"。</summary>
+        internal static float? RatioForKey(CaptureSize key)
+        {
+            foreach (var p in Presets)
+                if (p.Key == key) return p.Ratio;
+            return null;
         }
 
         /// <summary>
-        /// 菜单重新初始化后把我们选中的开关重新点亮。
-        /// 游戏在 InitView 里会把每个开关刷成「key == Default」，我们的不在字典里刷不到，
-        /// 但选中的那个也会被别人的刷新带歪，所以得补一次。
+        /// 游戏的 <c>CurrentCaptureSize</c> 变成 captureSize 了。
+        ///
+        /// 由 CaptureSizeRatioHook 打在 View 的 <c>&lt;InitView&gt;b__8_1</c> 上 ——
+        /// ⚠️ 那个回调的语义是「状态变了，按 key == 新值 刷全表」，**不是**"玩家点了原生选项"。
+        /// 改造前之所以把它当后者用，是因为我们自己从不写状态；现在我们的键会被游戏写进状态，
+        /// 所以必须按值分流：
+        ///   自定义键 → 记住选中的预设（出片比例与 resize 都要用它）
+        ///   原生键   → 清掉选中状态（玩家回到原生尺寸）
+        ///
+        /// 开关视觉不用我们管：<c>b__8_1</c> 本体就是"遍历字典、按 key == 当前值 刷全表"，
+        /// 原生那几项也会被一起按灭。
         /// </summary>
-        public static void OnMenuReinitialized() => RefreshToggleVisuals();
+        internal static void OnSizeChanged(CaptureSize captureSize)
+        {
+            _selected = null;
+            foreach (var p in Presets)
+            {
+                if (p.Key != captureSize) continue;
+                _selected = p;
+                break;
+            }
+
+            // 【临时诊断，定位完删】卡死时这一行是"最后一次点击走到哪儿"的起点
+//             MelonLogger.Msg("[key] 状态变成 " + (int)captureSize
+//                             + "（选中=" + (_selected == null ? "非自定义" : _selected.Label) + "）");
+        }
 
         private static bool BuildOption(GameObject option, Preset preset)
         {
@@ -161,151 +241,26 @@ namespace BetterCamera.Features
                 return false;
             }
 
-            // ⚠️ 刻意**不**调 CommonSwitchButtonBehaviour.InitBehaviour。
-            // 它内部会去初始化 CommonButtonBehaviour 的「点击 → 音效」那条链，
-            // 而音效播放器是 Zenject 注入的、克隆体上永远是 null —— 点下去就是空引用。
-            // 视觉初始化改用 UpdateIsOn（`if (_isOn != isOn || !_wasInit)` 决定了它
-            // 在没初始化过时也会走完整流程），不走那条链。
-            SetToggleVisual(toggle, false, force: true);
+            // ⚠️ 必须调**游戏自己的** CommonSwitchButtonBehaviour.InitBehaviour(bool)，不能只调 UpdateIsOn。
+            //
+            // 原因是晚插的副作用：游戏的 InitView 会给字典里每个条目调一次 InitBehaviour(key == Default)
+            //（它把 `_wasInit` 置 true），而我们的条目是 InitView 跑完之后才插进去的 ⇒ 游戏不会再替我们初始化。
+            // 于是 `_wasInit` 恒为 false ⇒ UpdateIsOn 的守卫 `if (_isOn != isOn || !_wasInit)` **恒真** ⇒
+            // 每一次开关视觉刷新都会给这 4 个克隆体取消重建 CTS、重播一遍 timeline ——
+            // 玩家看到的就是"点一个自定义预设，选中标识沿字典顺序把 3,4,5,6 跳一遍"（2026-09-17 实测）。
+            //
+            // InitBehaviour 内部会调 CommonButtonBehaviour.InitBehaviour()（点击→音效那条链）；
+            // 克隆体的音效播放器没被注入，那一步由 ClickSoundGuardHook 挡掉，不会抛。
+            if (!TryInitBehaviour(toggle))
+                SetToggleVisual(toggle, false, force: true);   // 拿不到游戏的原方法就退回老的兜底
 
-            // 回调包一层：异常顺着 Button.onClick.Invoke 冒出去的话，
-            // EventSystem 这一次输入处理会被整个打断，表现是"点了这个之后别的按钮也不响应"
-            UnityEventBridge.AddClickListener(button, () => GuardedSelect(preset));
+            // 点击由我们自己路由：那本字典的点击 Merge 流是**订阅时的快照**，我们插进去太晚
+            //（场景那批 Zenject 初始化跑在 MelonLoader 场景回调之前），所以这份快照里没有我们 ——
+            // 由这里把"我们的键"交给游戏自己的 Presenter 补上（状态仍由游戏写入）。
+            UnityEventBridge.AddClickListener(button, () => PushKey(preset));
 
             preset.Toggle = toggle;
             return true;
-        }
-
-        /// <summary>
-        /// 包一层 try/catch。这个回调挂在 UnityEvent 上，异常会顺着
-        /// `Button.onClick.Invoke` 往 Unity 的输入处理里冒 —— 那会把**这一整次点击处理**
-        /// 打断（onClick 的监听者循环、以及 EventSystem 随后的收尾），
-        /// 表现是"点了这个之后别的按钮也不响应了"，而且日志里未必有线索。
-        /// 宁可这里哑掉也不能外溢。
-        /// </summary>
-        private static void GuardedSelect(Preset preset)
-        {
-            try
-            {
-                Select(preset);
-            }
-            catch (Exception e)
-            {
-                MelonLogger.Warning("[BetterCamera] 切换拍照比例失败: " + e.Message);
-            }
-        }
-
-        private static void Select(Preset preset)
-        {
-            // 先让游戏自己切到 Portrait，再把比例纠正成我们的。
-            //
-            // 顺序和手法都不能换：游戏那套是「CurrentCaptureSize（状态） →
-            // 取景框（b__10_0）→ 出片时按 captureSize 分支」三者联动的。早先的版本
-            // 只是在出片那一刻偷偷把 captureSize 改成 Portrait，游戏状态和取景框却还
-            // 停在别处 —— 三者对不上，整条拍照流程会卡死（快门和退出按钮一起失效）。
-            // 只在游戏状态还不是 Portrait 时才推。推过就不再推 —— 重复推会让游戏
-            // 重刷一遍开关视觉、把 Portrait 点亮，那就是"跳一帧 9:16"（见 _droveToPortrait）
-            if (!_droveToPortrait)
-            {
-                // 夹住：推状态会让游戏顺手点亮它自己的 Portrait 开关，那一帧就是
-                // "跳一下 9:16"。Arm 让紧接着那次点亮被吃掉，推完立刻 Disarm ——
-                // 游戏那条刷新是同步的（同一帧内完成），所以这个窗口是精确的。
-                PortraitToggleSuppressHook.Arm();
-                RequestNativePortrait();
-                PortraitToggleSuppressHook.Disarm();
-
-                _droveToPortrait = true;
-            }
-
-            _selected = preset;
-
-            RefreshToggleVisuals();
-
-            // ⚠️ 紧接着就要下发，**不能等**。
-            //
-            // 推 Portrait 会让游戏立刻把取景框动画到 9:16 —— 下面这一刀在同一帧把它 Kill 掉，
-            // 所以玩家看不到那个中间态。曾经试过"等游戏动画跑完再下发"（门禁 + 下一帧补刀），
-            // 结果那 1 秒的 9:16 明明白白演了一遍，每次切换还多 1 秒延迟（2026-09-17 实测）。
-            // 中间态必须用"同帧接管"来消掉，不是靠压制开关视觉（那个是 PortraitToggleSuppressHook 管的另一件事）。
-            ApplyCropArea(preset.Ratio);
-        }
-
-        /// <summary>
-        /// 借游戏自己的 Presenter 把 CurrentCaptureSize 设成 Portrait。
-        ///
-        /// 走它的理由：这样 CurrentCaptureSize 是由**游戏自己的代码**构造和写入的，
-        /// 我们不用去凭空造一个 CurrentCaptureSize（那要传装箱的枚举，是这个项目里
-        /// 踩过两次的静默失效类型）。
-        ///
-        /// 为什么是 Portrait 而不是别的：出片链路只对 1/2 这两个值走"按比例裁切"分支，
-        /// 其它值一律不裁切。选 1 是因为它是竖构图 —— 和我们的预设同为"非全屏"语义，
-        /// 而且它自己的比例会被下面的 aspect 补丁换掉，选哪个都只是借个路口。
-        /// </summary>
-        private static void RequestNativePortrait()
-        {
-            var installer = NativeRefs.FindComponent(GamePaths.CaptureSizeMenu, MenuInstallerTypeName);
-            var presenter = installer == null
-                ? null
-                : Il2CppReflection.FindIl2CppField(installer.GetIl2CppType(), "_presenter")?.GetValue(installer);
-
-            var wrapper = Il2CppReflection.WrapAsManaged(presenter, PresenterTypeName);
-            if (wrapper == null)
-            {
-                MelonLogger.Warning("[BetterCamera] 拿不到拍照尺寸菜单的 Presenter，比例可能不生效");
-                return;
-            }
-
-            try
-            {
-                // 按签名找：Presenter 上只有那个处理点击的 lambda 收 CaptureSize
-                foreach (var method in wrapper.GetType().GetMethods(
-                             System.Reflection.BindingFlags.Instance |
-                             System.Reflection.BindingFlags.Public |
-                             System.Reflection.BindingFlags.NonPublic))
-                {
-                    var parameters = method.GetParameters();
-                    if (parameters.Length != 1 || parameters[0].ParameterType.Name != "CaptureSize") continue;
-
-                    method.Invoke(wrapper, new object[] { CaptureSize.Portrait });
-                    return;
-                }
-
-                MelonLogger.Warning("[BetterCamera] Presenter 上没有收 CaptureSize 的方法，比例可能不生效");
-            }
-            catch (Exception e)
-            {
-                MelonLogger.Warning("[BetterCamera] 切换原生尺寸失败: " + e.Message);
-            }
-        }
-
-        /// <summary>
-        /// 只让当前选中的那个开着。
-        ///
-        /// 我们那四个好办；原生那三个才是麻烦：本 mod 不写 CurrentCaptureSize，
-        /// 所以游戏那套「key == 当前值」的刷新根本不会因为我们而被触发，
-        /// 结果是旧的新的同时亮着。够不到字典，但够得到 GameObject ——
-        /// Body 下面就是 CaptureSizeOption_*（我们的叫 P_BCCaptureSizeOption_*，前缀不同不会误伤）。
-        ///
-        /// 只在"选中的是我们的预设"时才去关原生 —— 点原生选项时游戏自己会刷对，
-        /// 那时去关反而会把它刚点亮的那个按灭。
-        /// </summary>
-        private static void RefreshToggleVisuals()
-        {
-            foreach (var p in Presets)
-                SetToggleVisual(p.Toggle, ReferenceEquals(p, _selected));
-
-            if (_selected == null) return;
-
-            var body = GameObject.Find(GamePaths.CaptureSizeMenuBody);
-            if (body == null) return;
-
-            for (int i = 0; i < body.transform.childCount; i++)
-            {
-                var child = body.transform.GetChild(i);
-                if (!child.name.StartsWith(NativeOptionPrefix, StringComparison.Ordinal)) continue;
-
-                SetToggleVisual(NativeRefs.FindComponent(child.Find(OptionNodeName), ToggleTypeName), false);
-            }
         }
 
         /// <summary>
@@ -318,8 +273,9 @@ namespace BetterCamera.Features
         /// 但那是错的：它不 Kill 掉游戏那边正在跑的 sequence，只是关掉 fitter 直接写
         /// sizeDelta，于是和还在运行的补间抢同一个属性。实测每次切换比例后 2~3ms 就冒一个
         /// NullReferenceException，而且切换次数一多就永久复现 —— 退回游戏自己的路径。
+        /// （那批 NRE 后来查明是按钮音效链的残留，但"和跑着的补间抢属性"这条理由本身仍然成立。）
         /// </summary>
-        private static void ApplyCropArea(float ratio)
+        internal static void ApplyCropAreaImmediately(float ratio)
         {
             var view = NativeRefs.FindComponent(GamePaths.CaptureSizeCropObject, CropViewTypeName);
             if (view == null)
@@ -332,11 +288,48 @@ namespace BetterCamera.Features
 
             try
             {
+                // 【临时诊断，定位完删】下发前后各记一行取景框状态：
+                // 卡死的时候，日志尾部这几行就是"我们最后一刀切在什么状态上"。
+//                 MelonLogger.Msg("[tween] 下发前 " + CropStateLine());
+
                 _cropMethod.Invoke(view, new Il2CppSystem.Object[] { Il2CppReflection.BoxFloat(ratio) });
+
+//                 MelonLogger.Msg("[tween] 下发后 " + CropStateLine());
             }
             catch (Exception e)
             {
-                MelonLogger.Warning("[BetterCamera] 更新取景框失败: " + e.Message);
+                MelonLogger.Warning("[BetterCamera] 更新取景框失败: " + e.Message
+                                    + "（下发时 " + CropStateLine() + "）");
+            }
+        }
+
+        /// <summary>
+        /// 【临时诊断，定位完删】取景框状态压成一行，给卡死现场用。
+        ///
+        /// 三个字段各有判读：
+        ///   animating —— 我们这一刀是不是切在游戏动画中途
+        ///   seq       —— 补间指针，变了说明这一刀把游戏的 sequence 换掉了
+        ///   size      —— 游戏侧的 CurrentCaptureSize（和我们选的比例是否一致）
+        /// </summary>
+        public static string CropStateLine()
+        {
+            try
+            {
+                var view = NativeRefs.FindComponent(GamePaths.CaptureSizeCropObject, CropViewTypeName);
+                if (view == null) return "取景框找不到";
+
+                var type = view.GetIl2CppType();
+                var animating = Il2CppReflection.FindIl2CppField(type, "_isAnimating")?.GetValue(view);
+                var seq = Il2CppReflection.FindIl2CppField(type, "_sequence")?.GetValue(view);
+                var size = Il2CppReflection.FindIl2CppField(type, "_currentCaptureSize")?.GetValue(view);
+
+                return "animating=" + (animating == null ? "?" : animating.Unbox<bool>().ToString())
+                       + " seq=0x" + (seq == null ? "0" : seq.Pointer.ToInt64().ToString("X"))
+                       + " size=" + (size == null ? "?" : size.ToString());
+            }
+            catch (Exception e)
+            {
+                return "读取景框状态失败: " + e.GetType().Name;
             }
         }
 
@@ -353,22 +346,88 @@ namespace BetterCamera.Features
 
             _cropMethodResolved = true;
 
-            _cropMethod = Il2CppReflection.FindIl2CppMethod(view.GetIl2CppType(), "UpdateCropArea");
+            // 只留"不带动画"那条：带动画的那条现在由游戏自己的代码走
+            //（我们只在 b__10_0 前缀里把入参改写成 Portrait，再由 CropRatioPrefix 换掉比例）
+            _cropMethod = Il2CppReflection.FindIl2CppMethod(view.GetIl2CppType(), "UpdateCropAreaImmediately");
             if (_cropMethod == null)
                 MelonLogger.Warning("[BetterCamera] 找不到取景框的 UpdateCropArea，比例预览不会更新");
 
             return _cropMethod != null;
         }
 
-        /// <summary>按钮位置不猜：从 CommonButtonBehaviour._button 拿游戏自己存的引用。</summary>
-        private static Il2CppSystem.Object TakeButton(Il2CppSystem.Object toggle)
-        {
-            var behaviour = Il2CppReflection
-                .FindIl2CppField(toggle.GetIl2CppType(), "_switchButton")?.GetValue(toggle);
+        // ---- 【临时诊断】DOTween 补间计数。定位完连同 ApplyCropArea 里那行一起删。 ----
+        //
+        // 要验的猜想：ApplyCropArea 调的 UpdateCropArea **每次都会 Kill 旧序列再新建一个**，
+        // 如果 Kill 没把旧的释放干净，这几个计数会随切换次数**单调上涨**。而 DOTween 的
+        // TweenManager 每帧要遍历所有活动补间 —— 攒到一定程度就可能把别的东西拖垮。
+        //
+        // 日志里已经出现过两类 DOTween 警告（"Target or field is missing/null"、
+        // "This Tween has been killed and is no..."），说明死补间确实存在。
+        //
+        // 判读：切换十几次，看数字是**单调上涨**还是**稳定在某个小值**。
+        // 前者=泄漏（接着查我们哪一刀没释放干净）；后者=排除 DOTween，换方向。
+        private static Il2CppSystem.Type _dotweenType;
+        private static bool _dotweenTypeResolved;
 
-            return behaviour == null
-                ? null
-                : Il2CppReflection.FindIl2CppField(behaviour.GetIl2CppType(), "_button")?.GetValue(behaviour);
+        // 这个计数只在 LogTweenCounts 的输出里用，而那段输出目前是注释状态
+        //（诊断代码按约定保留、默认不播报）。字段留着，以后查补间泄漏直接放开即可。
+#pragma warning disable CS0169
+        private static int _tweenSample;
+#pragma warning restore CS0169
+
+        private static void LogTweenCounts()
+        {
+            try
+            {
+                if (!_dotweenTypeResolved)
+                {
+                    _dotweenTypeResolved = true;
+                    _dotweenType = NativeRefs.TypeOf("Il2CppDG.Tweening.DOTween");
+                    if (_dotweenType == null)
+                        MelonLogger.Warning("[tween] 找不到 DOTween 类型，补间计数不可用");
+                }
+
+                if (_dotweenType == null) return;
+
+//                 MelonLogger.Msg("[tween] #" + _tweenSample++
+//                                 + " active=" + StaticInt("TotalActiveTweens")
+//                                 + " sequences=" + StaticInt("TotalActiveSequences")
+//                                 + " playing=" + StaticInt("TotalPlayingTweens"));
+            }
+            catch (Exception e)
+            {
+                MelonLogger.Warning("[tween] 读补间数失败: " + e.Message);
+            }
+        }
+
+        private static int StaticInt(string name)
+        {
+            var method = Il2CppReflection.FindIl2CppStaticMethod(_dotweenType, name);
+            return method == null ? -1 : Il2CppReflection.UnboxInt(method.Invoke(null, null));
+        }
+
+        /// <summary>
+        /// 调游戏的 <c>CommonSwitchButtonBehaviour.InitBehaviour(bool)</c>（把克隆体变成"游戏初始化过"的开关：
+        /// `_isOn = false`、`_wasInit = true`，从而 UpdateIsOn 的同值调用不再重播 timeline）。
+        /// 找不到那个方法返回 false，调用方退回旧兜底。
+        /// </summary>
+        private static bool TryInitBehaviour(Il2CppSystem.Object toggle)
+        {
+            if (toggle == null) return false;
+
+            try
+            {
+                var method = Il2CppReflection.FindIl2CppMethod(toggle.GetIl2CppType(), "InitBehaviour", 1);
+                if (method == null) return false;
+
+                method.Invoke(toggle, new Il2CppSystem.Object[] { Il2CppReflection.BoxBool(false) });
+                return true;
+            }
+            catch (Exception e)
+            {
+                MelonLogger.Warning("[BetterCamera] 初始化克隆开关失败（退回 UpdateIsOn 兜底）: " + e.Message);
+                return false;
+            }
         }
 
         private static void InvokeBool(Il2CppSystem.Object target, string methodName, bool value)
@@ -377,7 +436,7 @@ namespace BetterCamera.Features
 
             try
             {
-                Il2CppReflection.FindIl2CppMethod(target.GetIl2CppType(), methodName)
+                Il2CppReflection.FindIl2CppMethod(target.GetIl2CppType(), methodName, 1)
                     ?.Invoke(target, new Il2CppSystem.Object[] { Il2CppReflection.BoxBool(value) });
             }
             catch (Exception e)
@@ -394,20 +453,16 @@ namespace BetterCamera.Features
         ///
         ///   UpdateIsOn 开头是  if ( _isOn != isOn || !_wasInit )
         ///   InitBehaviour 里才有  _wasInit = true
+        ///   （而且只有对象在**激活层级**里时它才重播 timeline，否则走 SnapVisualToCurrentState）
         ///
-        /// 而本 mod 刻意**不**调 InitBehaviour（见 BuildOption 的说明：它会去初始化
-        /// 「点击 → 音效」那条链，而音效播放器是 Zenject 注入的、克隆体上永远是 null）。
-        /// 后果就是**我们克隆出来的那 4 个开关 `_wasInit` 恒为 false**，那个守卫对它们
-        /// 恒真 —— 同值调用也会取消并重建 _beforeSelectCTS、重播一遍 _onOnTimeline /
-        /// _onOffTimeline。重申逻辑每帧调一次的话，就是每帧播一遍动画，
-        /// 反而把"选中跳变"做得更明显。
+        /// 原生化改造之后，`_wasInit` 不再恒为 false：我们的克隆体也会被游戏的 InitView
+        /// 一起初始化（它遍历整本字典调 `InitBehaviour(key == Default)`）。但那次初始化
+        /// 依赖"插入确实发生了"，所以 BuildOption 里仍然自己 force 一次做兜底 ——
+        /// 幂等，最坏情况是多播一遍 off 动画。
         ///
-        /// 原生那 3 个开关 _wasInit 是 true，同值本来就是 no-op；统一走这里更稳妥。
+        /// 日常的亮/灭**不归这里管**：状态一变，游戏的 b__8_1 会遍历字典按 key 刷全表。
+        /// 这个方法现在只有 BuildOption 那一个调用点（force: true）。
         /// </summary>
-        /// <param name="force">
-        /// 第一次初始化视觉时要 true —— 那时 _isOn 还是默认的 false，靠读值判断会误跳过，
-        /// 而那次调用真正的作用是让 UpdateIsOn 走一遍完整流程把视觉建起来。
-        /// </param>
         private static void SetToggleVisual(Il2CppSystem.Object toggle, bool isOn, bool force = false)
         {
             if (toggle == null) return;
