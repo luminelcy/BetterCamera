@@ -58,8 +58,25 @@ namespace BetterCamera
                 return;
             }
 
-            var clone0 = UnityEngine.Object.Instantiate(original, original.transform.parent);
-            clone0.name = GamePaths.NameBcZoomHandle;
+            // ⚠️ 这里**不再克隆原件、也不再销毁它**（2026-09-18）。
+            //
+            // 【当初为什么会克隆 + 销毁】作者说明：早期 FOV 是**直写相机 m_Lens**，
+            // 要绕开游戏自己对那个对象的管理，所以另做一个滑条当"我们的 UI"，
+            // 顺手把原件 Destroy 掉腾位置。
+            //
+            // 【现在为什么不需要】FOV 已经改走**原生响应式变量**
+            //（NativeFovChannel → RoomCameraFOV → 游戏自己的 UpdateFOV 落地），
+            // 原件和我们的滑条本来就**应该是同一个对象** —— 克隆的理由不存在了。
+            // 而那次销毁是实打实的代价：Destroy 游戏自己的对象会制造**悬垂引用**，
+            // 游戏那边只要还持着 P_ZoomHandleObject 的引用，之后一访问就是
+            // "读已释放的内存"，对应崩溃里的
+            //     AccessViolationException ... other memory is corrupt
+            // 而且它**每次进场景都执行**。
+            //
+            // 【现在怎么做】直接用原件：ZoomSlider 的路径指向它（GamePaths.BcZoomHandle），
+            // 那里照旧 SetRange(20, 120) 把范围改成我们要的。
+            // 原件留在游戏手里、可能被游戏改动 —— 没关系，ZoomSlider.SyncFromNative
+            // 本来就是为"原生侧改了这个值"写的，每帧会把手柄跟过去。
 
             var clone1 = UnityEngine.Object.Instantiate(original, original.transform.parent);
             clone1.name = GamePaths.NameBcFocusHandle;
@@ -155,7 +172,10 @@ namespace BetterCamera
             }
             else logger.Error($"Cannot find CommonButton at path: {CommonButtonPath}");
 
-            UnityEngine.Object.Destroy(original);
+            // ⛔ 这里原来有一句 `UnityEngine.Object.Destroy(original);`
+            //    —— 整个 mod 唯一一处销毁游戏对象的地方，2026-09-18 已删除。
+            //    原因见函数开头那段说明：它是悬垂引用的来源，而删掉它不需要任何补偿
+            //    （滑条直接改用原件）。
 
             // logger.Msg("Successfully cloned P_ZoomHandleObject twice!");
         }

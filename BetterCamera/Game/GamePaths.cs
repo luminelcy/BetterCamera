@@ -85,6 +85,7 @@ namespace BetterCamera.Game
 
         // 克隆体的名字单独列出来：NativeUiFactory 用这些名字给 Instantiate 出来的对象命名，
         // 而消费者用下面的路径去找。两者由同一个常量拼出，改名就不可能只改一半。
+        /// <summary>以前给缩放滑条克隆体用的名字。2026-09-18 起不再克隆它，留作记录。</summary>
         public const string NameBcZoomHandle = "P_BetterCameraHandleObject0";
         public const string NameBcFocusHandle = "P_BetterCameraHandleObject1";
         public const string NameBcDutchHandle = "P_BetterCameraHandleObject2";
@@ -98,7 +99,17 @@ namespace BetterCamera.Game
         public const string NameBcFocusModeButton1 = "P_SwitchCameraFocusModeButtonObject1";
         public const string NameBcCommonButton = "P_BetterCameraCommonButton";
 
-        public const string BcZoomHandle = BodyRight + "/" + NameBcZoomHandle;       // ZoomSlider
+        /// <summary>
+        /// ZoomSlider 用的缩放滑条 —— **直接用游戏原件**（2026-09-18）。
+        ///
+        /// 以前这里指向 SliderHandle 克隆出来的 P_BetterCameraHandleObject0，而那个克隆
+        /// 之后会把原件 Destroy 掉。两者父级和位置完全相同，等于"原地改个名"多走一次销毁；
+        /// 而销毁游戏对象会造成悬垂引用（见 SliderHandle.Init 开头的说明）。所以改用原件。
+        ///
+        /// 原件与克隆体唯一的功能差别是范围：原生的 min/max 是 40/80，
+        /// 那个由 ZoomSlider.Init 的 SetRange(20, 120) 负责改 —— 和以前一样，没有变化。
+        /// </summary>
+        public const string BcZoomHandle = NativeZoomHandle;                         // ZoomSlider
         public const string BcFocusHandle = BodyRight + "/" + NameBcFocusHandle;     // FocusSlider；DutchSlider 会改它的 m_Direction
         public const string BcDutchHandle = FooterCenter + "/" + NameBcDutchHandle;  // DutchSlider
         public const string BcShowRoomStates = FooterCenter + "/" + NameBcShowRoomStates; // DutchReset
