@@ -220,6 +220,13 @@ namespace BetterCamera.Features
             _selected = preset;
 
             RefreshToggleVisuals();
+
+            // ⚠️ 紧接着就要下发，**不能等**。
+            //
+            // 推 Portrait 会让游戏立刻把取景框动画到 9:16 —— 下面这一刀在同一帧把它 Kill 掉，
+            // 所以玩家看不到那个中间态。曾经试过"等游戏动画跑完再下发"（门禁 + 下一帧补刀），
+            // 结果那 1 秒的 9:16 明明白白演了一遍，每次切换还多 1 秒延迟（2026-09-17 实测）。
+            // 中间态必须用"同帧接管"来消掉，不是靠压制开关视觉（那个是 PortraitToggleSuppressHook 管的另一件事）。
             ApplyCropArea(preset.Ratio);
         }
 

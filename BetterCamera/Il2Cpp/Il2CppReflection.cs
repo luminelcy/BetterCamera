@@ -169,6 +169,24 @@ namespace BetterCamera.Il2Cpp
             catch { return null; }
         }
 
+        // ================= 认对象是谁 =================
+
+        /// <summary>
+        /// 读一个 il2cpp 对象的 Unity <c>name</c>（认日志里打出的是哪个对象）。读不到返回 null。
+        ///
+        /// **不能用 <c>raw.GetType().Name</c>** —— Il2CppInterop 代理对象的 .NET 类型是
+        /// **声明类型**（日志钩子拿到的常常是基类包装），它不反映真实的原生子类。
+        /// 所以要绕到原生指针上重建一个带类型的包装再读。
+        /// </summary>
+        public static string GetObjectName(Il2CppSystem.Object raw)
+        {
+            if (raw == null) return null;
+
+            var wrapped = WrapAsManaged(raw, "UnityEngine.Object");
+            var name = wrapped?.GetType().GetProperty("name")?.GetValue(wrapped) as string;
+            return string.IsNullOrEmpty(name) ? null : name;
+        }
+
         // ================= 字段读写 =================
 
         public static void SetFloatField(Il2CppSystem.Object target, Il2CppSystem.Reflection.FieldInfo field, float value)

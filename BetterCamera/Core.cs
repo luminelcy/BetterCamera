@@ -75,6 +75,15 @@ namespace BetterCamera
             // 玩家能点到菜单之前就位。
             Step("PortraitToggleSuppressHook", () => PortraitToggleSuppressHook.Apply());
 
+            // 挡掉克隆体上那个没被注入过的 Zenject kernel 在 Start 里抛的空引用。
+            // 必须排在下面那些 Instantiate 之前 —— 克隆体一激活 Unity 就会调它的 Start。
+            Step("MonoKernelGuardHook", () => MonoKernelGuardHook.Apply());
+
+            // 挡掉克隆体按钮被点击时那条「点击 → 音效」链抛的空引用（音效播放器同样是
+            // 注入不到才为 null）。和上面一样，得赶在克隆体存在之前就位 ——
+            // 游戏自己在菜单刷新时会去调克隆体的 InitBehaviour。
+            Step("ClickSoundGuardHook", () => ClickSoundGuardHook.Apply());
+
             // ⚠️ 顺序是有依赖的：
             //   FXUIHandle / SliderHandle 会 Instantiate 出下面各滑条要去找的 UI 对象，
             //   所以它们必须排在最前面。普通玩家看不到这层依赖，改动时留意。

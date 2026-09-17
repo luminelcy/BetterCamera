@@ -56,6 +56,10 @@
 		<Compile Include="FilterMenuVisibilityHook.cs" />
 		<Compile Include="CaptureSizeRatioHook.cs" />
 		<Compile Include="PortraitToggleSuppressHook.cs" />
+		<!-- 挡掉克隆体上那个没被 Zenject 注入过的 MonoKernel 在 Start 里抛的空引用 -->
+		<Compile Include="MonoKernelGuardHook.cs" />
+		<!-- 挡掉克隆体按钮被点击时那条「点击 → 音效」链抛的空引用 -->
+		<Compile Include="ClickSoundGuardHook.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
