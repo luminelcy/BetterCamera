@@ -6,10 +6,10 @@
 		<RootNamespace>BetterCamera</RootNamespace>
 		<LangVersion>default</LangVersion>
 		<IsPackable>false</IsPackable>
-		<!-- 这里只能写纯数字，所以 1.2.b2 用 1.2.2.0 表示（b2 → .2）。
+		<!-- 这里只能写纯数字，所以 1.2.b3 用 1.2.3.0 表示（b3 → .3）。
 		     玩家看到的版本号是 Core.cs 里 MelonInfo 那个。 -->
-		<AssemblyVersion>1.2.2.0</AssemblyVersion>
-		<FileVersion>1.2.2.0</FileVersion>
+		<AssemblyVersion>1.2.3.0</AssemblyVersion>
+		<FileVersion>1.2.3.0</FileVersion>
 		<NeutralLanguage>en-US</NeutralLanguage>
 		<AssemblyName>BetterCamera</AssemblyName>
 		<LangVersion>latest</LangVersion>

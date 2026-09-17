@@ -4,7 +4,7 @@ using MelonLoader;
 using UnityEngine;
 using BetterCamera.Features;
 
-[assembly: MelonInfo(typeof(BetterCamera.Core), "BetterCamera", "1.2.b2", "kasa", null)]
+[assembly: MelonInfo(typeof(BetterCamera.Core), "BetterCamera", "1.2.b3", "kasa", null)]
 [assembly: MelonGame("gogh Japan", "gogh")]
 [assembly: MelonPriority(99)]
 
