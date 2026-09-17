@@ -54,6 +54,7 @@
 		<Compile Include="FovClampHook.cs" />
 		<Compile Include="FilterMenuVisibilityHook.cs" />
 		<Compile Include="CaptureSizeRatioHook.cs" />
+		<Compile Include="PortraitToggleSuppressHook.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

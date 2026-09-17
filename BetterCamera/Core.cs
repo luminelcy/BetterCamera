@@ -39,6 +39,10 @@ namespace BetterCamera
             // 补丁要先就位，玩家点新选项时才有东西接住
             CaptureSizeRatioHook.Apply();
 
+            // 挡掉"第一次切比例时菜单闪一下竖屏 9:16"（见那边的注释）。同样要在
+            // 玩家能点到菜单之前就位。
+            PortraitToggleSuppressHook.Apply();
+
             // ⚠️ 顺序是有依赖的：
             //   FXUIHandle / SliderHandle 会 Instantiate 出下面各滑条要去找的 UI 对象，
             //   所以它们必须排在最前面。普通玩家看不到这层依赖，改动时留意。
@@ -69,6 +73,7 @@ namespace BetterCamera
             FovClampHook.Remove();
             FilterMenuVisibilityHook.Remove();
             CaptureSizeRatioHook.Remove();
+            PortraitToggleSuppressHook.Remove();
 
             // 缓存里是随场景销毁的对象，留着就是悬垂指针
             CaptureSizePresets.Reset();
@@ -84,6 +89,7 @@ namespace BetterCamera
             FovClampHook.Remove();
             FilterMenuVisibilityHook.Remove();
             CaptureSizeRatioHook.Remove();
+            PortraitToggleSuppressHook.Remove();
         }
 
         public override void OnUpdate()
