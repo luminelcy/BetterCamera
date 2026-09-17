@@ -1,4 +1,5 @@
 using Il2CppInterop.Runtime;
+using MelonLoader;
 
 namespace BetterCamera.Il2Cpp
 {
@@ -18,6 +19,17 @@ namespace BetterCamera.Il2Cpp
         private static Il2CppSystem.Type _lensType;
         private static bool _ready;
 
+        /// <summary>
+        /// 解析一次并缓存。`_ready` 是 latch —— **失败不会重试**，所以失败必须报出来。
+        ///
+        /// 为什么不能只静默 return：依赖这条链的是 DutchSlider、DutchReset、
+        /// NearClipAdjuster、ExitAdjuster 四处，解析不出来时它们的 EditFloat / ReadFloat
+        /// 全部返回 false / NaN，而且**调用点全都丢弃返回值** —— 表现是"点了没反应"，
+        /// 日志里零线索。ReadFloat 返回 NaN 还会让 SyncFromNative 的比值比较出怪结果。
+        ///
+        /// 注意日志只打在这里：EditFloat / ReadFloat 返回 false 有合法原因
+        /// （相机已销毁之类），在那里打会刷屏。而这里因为 latch 只跑一次。
+        /// </summary>
         private static void Ensure()
         {
             if (_ready) return;
@@ -28,6 +40,11 @@ namespace BetterCamera.Il2Cpp
                 _fLens = Il2CppReflection.FindIl2CppField(camType, "m_Lens");
 
             _lensType = Game.NativeRefs.TypeOf(LensTypeName);
+
+            if (_fLens == null || _lensType == null)
+                MelonLogger.Error("[BetterCamera] LensKit 解析失败（m_Lens=" + (_fLens != null)
+                                  + " lensType=" + (_lensType != null) + "）—— "
+                                  + "Dutch / NearClip / 退出复位这几处改相机镜头参数都不会生效");
         }
 
         /// <summary>

@@ -1,4 +1,5 @@
 using Il2CppInterop.Runtime;
+using MelonLoader;
 
 namespace BetterCamera.Il2Cpp
 {
@@ -16,13 +17,29 @@ namespace BetterCamera.Il2Cpp
         private static Il2CppSystem.Reflection.FieldInfo _fDirection;
         private static bool _ready;
 
+        /// <summary>
+        /// 解析一次并缓存。`_ready` 是 latch —— **失败不会重试**，所以失败必须报出来。
+        ///
+        /// 为什么不能只静默 return：这一批成员是全 mod 四个滑条共用的基础设施，
+        /// 解析不出来时下面那些 Set/Get 全部静默 no-op，滑条会保持游戏原生范围。
+        /// 玩家看到的只是"mod 没生效"，日志里零线索 —— 这类静默失效是最难查的。
+        ///
+        /// 因为 _ready 已经置位，这段代码整个生命周期只跑一次，所以正常路径不打日志、
+        /// 失败路径也只报一次，不会刷屏。
+        /// </summary>
         private static void Ensure()
         {
             if (_ready) return;
             _ready = true;
 
             var managed = Il2CppReflection.FindType("UnityEngine.UI.Slider");
-            if (managed == null) return;
+            if (managed == null)
+            {
+                MelonLogger.Error("[BetterCamera] 找不到 UnityEngine.UI.Slider —— "
+                                  + "所有滑条的范围/取值设置都不会生效（滑条会保持游戏原生范围）");
+                return;
+            }
+
             var type = Il2CppType.From(managed);
 
             _fMax = Il2CppReflection.FindIl2CppField(type, "m_MaxValue");
@@ -31,6 +48,21 @@ namespace BetterCamera.Il2Cpp
             _fDirection = Il2CppReflection.FindIl2CppField(type, "m_Direction");
             _mSet = Il2CppReflection.FindIl2CppMethod(type, "Set");
             _mUpdateVisuals = Il2CppReflection.FindIl2CppMethod(type, "UpdateVisuals");
+
+            // 单个成员缺失只影响对应的那一项操作，不到"mod 不能用"的程度，报警告就够
+            WarnIfMissing(_fMax, "m_MaxValue");
+            WarnIfMissing(_fMin, "m_MinValue");
+            WarnIfMissing(_fValue, "m_Value");
+            WarnIfMissing(_fDirection, "m_Direction");
+            WarnIfMissing(_mSet, "Set");
+            WarnIfMissing(_mUpdateVisuals, "UpdateVisuals");
+        }
+
+        private static void WarnIfMissing(object member, string name)
+        {
+            if (member == null)
+                MelonLogger.Warning("[BetterCamera] SliderKit 取不到 Slider." + name
+                                    + "，依赖它的那项操作会静默跳过");
         }
 
         /// <summary>设上下限。</summary>

@@ -1,4 +1,5 @@
 using BetterCamera.Il2Cpp;
+using MelonLoader;
 
 namespace BetterCamera.Game
 {
@@ -47,6 +48,14 @@ namespace BetterCamera.Game
             catch { return null; }
         }
 
+        /// <summary>
+        /// 解析一次并缓存。`_resolved` 是 latch —— **失败不会重试**，所以失败要报出来。
+        ///
+        /// 级别是警告不是错误：这条链断了只是文字回落到英文，mod 功能照常。
+        /// 而且当前 ColorAdjustSliders 走的是写死的 FixedLanguage，这套链路是休眠的。
+        ///
+        /// 和 SliderKit / LensKit 一样，latch 让这段只跑一次，所以不会刷屏。
+        /// </summary>
         private static void Resolve()
         {
             if (_resolved) return;
@@ -60,6 +69,10 @@ namespace BetterCamera.Game
 
             _getCode = Il2CppReflection.FindIl2CppMethod(
                 NativeRefs.TypeOf("UnityEngine.Localization.LocaleIdentifier"), "get_Code");
+
+            if (_getSelectedLocale == null || _getIdentifier == null || _getCode == null)
+                MelonLogger.Warning("[BetterCamera] 取不到 Unity Localization 的语言查询方法，"
+                                    + "界面文字会一直用英文（其余功能不受影响）");
         }
     }
 }
