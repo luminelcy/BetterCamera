@@ -35,6 +35,8 @@
 		<!-- 游戏访问层：路径常量与组件获取 -->
 		<Compile Include="Game\GamePaths.cs" />
 		<Compile Include="Game\NativeRefs.cs" />
+		<!-- 读"后处理参数实际生效的值"：URP 按优先级混合所有 Volume，只看自己那层会读错（见文件注释） -->
+		<Compile Include="Game\PostProcessStack.cs" />
 		<Compile Include="Game\GameLanguage.cs" />
 		<Compile Include="Game\TmpKit.cs" />
 

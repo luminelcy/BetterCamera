@@ -91,20 +91,29 @@ namespace BetterCamera.Features
             // tabView 可能为 null（标签没建起来），那时面板就一直藏着 —— 但不影响其余功能。
             FilterMenuVisibilityHook.Register(container, tabView);
 
-            // 容器建好了但拿不到滑条的，单独跳过；能接的先接上
+            // 容器建好了但拿不到滑条的，单独跳过；能接的先接上。
+            //
+            // ⚠️ 这里**只读不写**。曾经的写法是接完滑条就把三个参数 `Apply(k, 0f)` 归零
+            //（注释写着"避免一上来画面就变了"），结果恰好相反：
+            //   Apply 的第一步是 set_overrideState(true) → 玩家一进拍照场景，
+            //   这三个**他从没碰过**的参数就被 mod 覆盖成了 0；而游戏 profile 里它们不是 0
+            //   （那是作者调好的画面）→ 覆盖成 0 等于把游戏的颜色分级改掉了。
+            //   现象就是"进拍照场景颜色就变，不装 mod 没有"（2026-09-17 玩家实测确认）。
+            //
+            // 正确做法：把游戏当前的值**读**到滑条上（滑条显示的就是真实值），参数一个字都不写。
+            // 真正会写参数的只有两处：玩家拖滑条（Apply）与按复位（ResetAll，回出厂值）。
             int wired = 0;
             foreach (var k in Knobs)
             {
                 if (k.Slider == null) continue;
                 if (Wire(k)) wired++;
+
+                // 滑条范围已经就位，把出厂状态读进来 —— 要放在 Wire 之后，否则范围还没设好
+                SyncSliderToEffective(k);   // 滑条对齐到「实际生效的值」——见 PostProcessStack 的说明
             }
 
-            if (wired > 0)
-            {
-                // 全部归零，避免一上来画面就变了
-                foreach (var k in Knobs)
-                    if (k.Parameter != null) Apply(k, 0f);
-            }
+            if (wired == 0)
+                MelonLogger.Warning("[BetterCamera] ColorAdjust 的滑条一个都没接上，面板里不会有可调项");
 
             // 标签一个都找不到就是结构变了 —— 这种情况必须报出来，
             // 因为"每条标签都显示着从模板带过来的文字"看着像正常，很容易没人发现
@@ -308,14 +317,62 @@ namespace BetterCamera.Features
             }
         }
 
-        /// <summary>四条参数全部归零，滑条手柄一起回到中点。</summary>
+        /// <summary>
+        /// 复位：回到**游戏出厂状态**，不是回到 0。
+        ///
+        /// 顺序不能反：先撤掉我们自己的 override（我们的实例优先级高于房间那个），
+        /// 再读"撤掉之后实际生效的值"回填滑条 —— 那才是"和没装 mod 一样"的样子。
+        /// 一味写 0 会把别的层（例如房间环境的 saturation=15）盖掉，
+        /// 那正是"一进拍照模式颜色就变"和"一拖就跳"的成因。
+        /// </summary>
         private static void ResetAll()
         {
             foreach (var k in Knobs)
             {
-                if (k.Parameter != null) Apply(k, 0f);
-                // sendCallback = false：值是我们自己写的，别再折回来触发一次 Apply
-                if (k.Slider != null) SliderKit.SetValueQuiet(k.Slider, 0f);
+                if (k.Parameter != null) ClearOverride(k);
+                SyncSliderToEffective(k);
+            }
+        }
+
+        /// <summary>
+        /// 把滑条对齐到"**实际生效**的值"，并且不写任何参数。
+        ///
+        /// ⚠️ 读的**不是**我们自己那个 ColorAdjustments 实例的值 —— 那只是整条后处理栈里的一层。
+        /// URP 按优先级混合：某个参数在别的层（比如房间环境 Volume 的 `saturation=15`）被 override 时，
+        /// 生效的就是那一层的值。以前只读自己这层（恒为 0）→ 滑条显示 0 而画面是 15 →
+        /// 玩家一拖就把 +15 顶掉，表现成"一拉就跳变"。
+        /// 详见 <see cref="BetterCamera.Game.PostProcessStack"/>。
+        /// </summary>
+        private static void SyncSliderToEffective(Knob k)
+        {
+            try
+            {
+                float value = PostProcessStack.Effective(k.Param, out _);
+
+                // 写值和移手柄是两件事：只写值会出现"值对、手柄还在旧位置"，玩家一抓手柄就被拽回去
+                if (k.Slider != null)
+                {
+                    SliderKit.SetValueQuiet(k.Slider, value);
+                    SliderKit.RefreshVisuals(k.Slider);
+                }
+            }
+            catch (Exception e)
+            {
+                MelonLogger.Warning("[BetterCamera] 同步 " + k.Param + " 的滑条失败: " + e.Message);
+            }
+        }
+
+        /// <summary>把覆盖关掉 —— URP 只应用被 override 的参数，关掉就等于恢复 profile 自己的值。</summary>
+        private static void ClearOverride(Knob k)
+        {
+            try
+            {
+                Il2CppReflection.FindIl2CppMethod(k.Parameter.GetIl2CppType(), "set_overrideState")
+                    ?.Invoke(k.Parameter, new Il2CppSystem.Object[] { Il2CppReflection.BoxBool(false) });
+            }
+            catch (Exception e)
+            {
+                MelonLogger.Warning("[BetterCamera] 关闭 " + k.Param + " 的覆盖失败: " + e.Message);
             }
         }
 
