@@ -27,11 +27,16 @@ namespace BetterCamera
         public static void Init(MelonLogger.Instance logger)
         {
             var original = GameObject.Find(ZoomHandlePath);
-            // if (original == null)
-            // {
-            //     logger.Error($"Cannot find P_ZoomHandleObject at path: {ZoomHandlePath}");
-            //     return;
-            // }
+
+            // 这个守卫一度被注释掉。恢复它的理由：下面第一件事就是 original.transform，
+            // 为空时抛 NRE，Init 从这里中断 —— 而 Core 的初始化是串行的，那会连带把
+            // 后面所有步骤一起带走。路径一旦对不上（游戏改层级），整条链路全废。
+            // 守卫本身就把原因写清楚了，日志里能直接看到是哪个路径找不到。
+            if (original == null)
+            {
+                logger.Error($"Cannot find P_ZoomHandleObject at path: {ZoomHandlePath}");
+                return;
+            }
 
             var clone0 = UnityEngine.Object.Instantiate(original, original.transform.parent);
             clone0.name = GamePaths.NameBcZoomHandle;
